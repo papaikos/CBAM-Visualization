@@ -26,6 +26,18 @@ python server.py
 http://127.0.0.1:8000
 ```
 
+## Deployment Notes
+
+- `requirements.txt` is intentionally minimal because the app uses only the Python standard library.
+- The server reads `HOST` and `PORT` from environment variables.
+- By default it binds to `0.0.0.0:8000`, which is suitable for most hosting platforms.
+
+Example:
+
+```bash
+HOST=0.0.0.0 PORT=8000 python server.py
+```
+
 ## Rebuild The Database From A Local CSV
 
 If you have your own local copy of `output_country_specific.csv`, you can regenerate the SQLite database:
