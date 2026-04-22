@@ -31,12 +31,39 @@ http://127.0.0.1:8000
 - `requirements.txt` is intentionally minimal because the app uses only the Python standard library.
 - The server reads `HOST` and `PORT` from environment variables.
 - By default it binds to `0.0.0.0:8000`, which is suitable for most hosting platforms.
+- `/api/health` performs a real SQLite check so hosting health checks fail fast if the bundled database is missing or unreadable.
 
 Example:
 
 ```bash
 HOST=0.0.0.0 PORT=8000 python server.py
 ```
+
+## Deploy On Render
+
+This repository now includes `render.yaml` and `.python-version` for Render's Python native runtime.
+
+1. In Render, create a new Blueprint or Web Service from this GitHub repo.
+2. Use the Python runtime if you create the service manually.
+3. Render should build with:
+
+```bash
+pip install -r requirements.txt
+```
+
+4. Render should start with:
+
+```bash
+python server.py
+```
+
+5. Health check path:
+
+```text
+/api/health
+```
+
+The repo already contains `data/cbam.sqlite3`, so no CSV upload is required for deployment.
 
 ## Rebuild The Database From A Local CSV
 
