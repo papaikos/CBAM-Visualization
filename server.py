@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -11,8 +12,8 @@ from urllib.parse import parse_qs, unquote, urlparse
 ROOT = Path(__file__).resolve().parent
 PUBLIC_DIR = ROOT / "public"
 DB_PATH = ROOT / "data" / "cbam.sqlite3"
-HOST = "127.0.0.1"
-PORT = 8000
+HOST = os.environ.get("HOST", "0.0.0.0")
+PORT = int(os.environ.get("PORT", "8000"))
 YEARS = [2026, 2027]
 MIRRORED_COUNTRIES = {
     "Kosovo": "Serbia",
