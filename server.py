@@ -198,7 +198,7 @@ def get_health() -> tuple[HTTPStatus, dict]:
 
     try:
         with connect() as connection:
-            emission_count = connection.execute("SELECT COUNT(*) FROM emissions").fetchone()[0]
+            has_rows = connection.execute("SELECT 1 FROM emissions LIMIT 1").fetchone() is not None
     except sqlite3.Error as exc:
         return (
             HTTPStatus.SERVICE_UNAVAILABLE,
@@ -209,7 +209,7 @@ def get_health() -> tuple[HTTPStatus, dict]:
             },
         )
 
-    return HTTPStatus.OK, {"ok": True, "emissionsRowCount": emission_count}
+    return HTTPStatus.OK, {"ok": True, "hasData": has_rows}
 
 
 def get_meta() -> dict:
