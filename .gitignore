@@ -1,0 +1,8 @@
+.omx/
+__pycache__/
+*.py[cod]
+*.sqlite3-shm
+*.sqlite3-wal
+*.sqlite3-journal
+output_country_specific.csv
+Thumbs.db
