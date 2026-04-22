@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Global Trade Insights</title>
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+      crossorigin=""
+    />
+    <link rel="stylesheet" href="/styles.css?v=20260421b" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="title-block">
+          <h1>Global Trade Insights</h1>
+          <p>CBAM Visualization By Athanasios Papazikos</p>
+        </div>
+
+        <div class="toolbar">
+          <label class="toolbar-field toolbar-field-wide">
+            <span>CN code</span>
+            <input id="cn-code-input" list="cn-code-options" autocomplete="off" />
+            <datalist id="cn-code-options"></datalist>
+          </label>
+
+          <label class="toolbar-field">
+            <span>CO2 price (EUR/tCO2)</span>
+            <input id="co2-price-input" type="number" min="0" step="0.01" placeholder="e.g. 65" />
+          </label>
+
+          <div class="toolbar-field year-switcher">
+            <span>Year</span>
+            <div class="year-buttons" id="year-buttons"></div>
+          </div>
+        </div>
+      </header>
+
+      <main class="map-stage">
+        <div id="map"></div>
+
+        <section class="floating-card search-card">
+          <label class="search-label" for="country-search-input">Search for a country</label>
+          <div class="search-input-shell">
+            <input id="country-search-input" type="text" autocomplete="off" placeholder="Type a country name..." />
+            <button id="country-search-clear" class="icon-button hidden" type="button" aria-label="Clear search">
+              x
+            </button>
+          </div>
+          <div id="country-search-results" class="search-results hidden"></div>
+        </section>
+
+        <section id="country-detail-card" class="floating-card detail-card hidden"></section>
+
+        <section class="floating-card legend-card">
+          <p class="eyebrow">Map value</p>
+          <div class="legend-row">
+            <span id="legend-min" class="legend-edge">0</span>
+            <div id="legend-gradient" class="legend-gradient"></div>
+            <span id="legend-max" class="legend-edge">0</span>
+          </div>
+          <div class="legend-caption">
+            The map shows every country that has data for the selected CN code and year.
+          </div>
+        </section>
+
+        <div id="hover-tooltip" class="hover-tooltip hidden"></div>
+      </main>
+    </div>
+
+    <script
+      src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+      crossorigin=""
+    ></script>
+    <script src="/app.js?v=20260421b" defer></script>
+  </body>
+</html>
