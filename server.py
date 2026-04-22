@@ -110,6 +110,11 @@ class AppHandler(SimpleHTTPRequestHandler):
         super().do_GET()
 
     def handle_api(self, parsed) -> None:
+        if parsed.path == "/api/health":
+            status, payload = get_health()
+            self.write_json(status, payload)
+            return
+
         if not DB_PATH.exists():
             self.write_json(
                 HTTPStatus.SERVICE_UNAVAILABLE,
@@ -123,9 +128,6 @@ class AppHandler(SimpleHTTPRequestHandler):
             return
 
         try:
-            if parsed.path == "/api/health":
-                self.write_json(HTTPStatus.OK, {"ok": True})
-                return
             if parsed.path == "/api/meta":
                 self.write_json(HTTPStatus.OK, get_meta())
                 return
@@ -178,9 +180,36 @@ def require_query_value(params: dict[str, list[str]], key: str) -> str:
 
 
 def connect() -> sqlite3.Connection:
-    connection = sqlite3.connect(DB_PATH)
+    connection = sqlite3.connect(f"{DB_PATH.resolve().as_uri()}?mode=ro", uri=True)
     connection.row_factory = sqlite3.Row
     return connection
+
+
+def get_health() -> tuple[HTTPStatus, dict]:
+    if not DB_PATH.exists():
+        return (
+            HTTPStatus.SERVICE_UNAVAILABLE,
+            {
+                "ok": False,
+                "error": "database_not_ready",
+                "message": f"Database file not found at {DB_PATH}",
+            },
+        )
+
+    try:
+        with connect() as connection:
+            emission_count = connection.execute("SELECT COUNT(*) FROM emissions").fetchone()[0]
+    except sqlite3.Error as exc:
+        return (
+            HTTPStatus.SERVICE_UNAVAILABLE,
+            {
+                "ok": False,
+                "error": "database_unavailable",
+                "message": str(exc),
+            },
+        )
+
+    return HTTPStatus.OK, {"ok": True, "emissionsRowCount": emission_count}
 
 
 def get_meta() -> dict:
