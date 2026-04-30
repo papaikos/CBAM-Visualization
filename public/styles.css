@@ -81,6 +81,27 @@ input {
   line-height: 1.5;
 }
 
+.disclaimer-disclosure {
+  margin-top: 0.45rem;
+  max-width: 46rem;
+  color: var(--text-soft);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.disclaimer-disclosure summary {
+  width: fit-content;
+  color: var(--text-body);
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.disclaimer-disclosure p {
+  margin: 0.35rem 0 0;
+  max-width: 46rem;
+  font-size: inherit;
+}
+
 .toolbar {
   display: grid;
   grid-template-columns: minmax(11rem, 16rem) minmax(9rem, 11rem) auto;
