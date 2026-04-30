@@ -15,6 +15,7 @@ DB_PATH = ROOT / "data" / "cbam.sqlite3"
 HOST = os.environ.get("HOST", "0.0.0.0")
 PORT = int(os.environ.get("PORT", "8000"))
 YEARS = [2026, 2027]
+DEFAULT_CN_CODE = "76011010"
 MIRRORED_COUNTRIES = {
     "Kosovo": "Serbia",
     "Northern Cyprus": "Turkey",
@@ -240,7 +241,7 @@ def get_meta() -> dict:
         "codes": codes,
         "years": YEARS,
         "routeCatalog": route_catalog,
-        "defaultCode": codes[0] if codes else None,
+        "defaultCode": DEFAULT_CN_CODE if DEFAULT_CN_CODE in codes else (codes[0] if codes else None),
         "defaultYear": YEARS[0],
     }
 
