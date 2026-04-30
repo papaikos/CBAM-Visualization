@@ -8,4 +8,5 @@ __pycache__/
 .env.*
 !.env.example
 output_country_specific.csv
+codebase
 Thumbs.db

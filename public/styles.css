@@ -547,10 +547,7 @@ input {
 }
 
 .country-path {
-  transition:
-    fill 0.22s ease,
-    fill-opacity 0.22s ease,
-    stroke-width 0.22s ease;
+  transition: none;
 }
 
 @media (max-width: 980px) {

@@ -3,7 +3,9 @@ const state = {
   map: null,
   geojson: null,
   geojsonLayer: null,
+  countryRenderer: null,
   featureLayers: new Map(),
+  hoveredLayer: null,
   selectedCode: "",
   selectedYear: 2026,
   co2Price: "",
@@ -13,7 +15,15 @@ const state = {
   hoveredCountry: null,
   mouse: { x: 0, y: 0 },
   countrySearch: "",
+  tooltipRenderQueued: false,
+  suppressMapClickUntil: 0,
+  selectionRequestId: 0,
 };
+
+const WORLD_BOUNDS = [
+  [-85, -180],
+  [85, 180],
+];
 
 const elements = {
   cnCodeInput: document.getElementById("cn-code-input"),
@@ -62,6 +72,13 @@ const COUNTRY_ALIASES = {
   "w sahara": "western sahara",
 };
 
+const COUNTRY_DATA_OVERRIDES = {
+  "northern cyprus": {
+    sourceCountry: "Turkey",
+    displayCountry: "Northern Cyprus",
+  },
+};
+
 function normalizeCountryName(value) {
   return (value || "")
     .normalize("NFKD")
@@ -76,6 +93,17 @@ function normalizeCountryName(value) {
 function canonicalCountryName(value) {
   const normalized = normalizeCountryName(value);
   return COUNTRY_ALIASES[normalized] || normalized;
+}
+
+function getCountryDataOverride(country) {
+  const normalized = normalizeCountryName(country);
+  const canonical = canonicalCountryName(country);
+  return COUNTRY_DATA_OVERRIDES[normalized] || COUNTRY_DATA_OVERRIDES[canonical] || null;
+}
+
+function getDataLookupCanonical(country) {
+  const override = getCountryDataOverride(country);
+  return canonicalCountryName(override?.sourceCountry || country);
 }
 
 function formatRouteLabel(route) {
@@ -172,15 +200,22 @@ function getMapEntry(country) {
   if (!state.mapData) {
     return null;
   }
-  return state.mapData.mapValuesByCanonical?.[canonicalCountryName(country)] ?? null;
+  return state.mapData.mapValuesByCanonical?.[getDataLookupCanonical(country)] ?? null;
 }
 
 function getMapValue(country) {
   return getMapEntry(country)?.paidEmissions ?? null;
 }
 
+function resolveApiCountryName(country) {
+  if (!state.mapData) {
+    return country;
+  }
+  return state.mapData.countryNameByCanonical?.[canonicalCountryName(country)] || country;
+}
+
 function countryHasAnyData(country) {
-  return state.mapData?.countriesCanonical?.includes(canonicalCountryName(country)) || false;
+  return state.mapData?.countriesCanonical?.includes(getDataLookupCanonical(country)) || false;
 }
 
 function createApiUrl(path, params = {}) {
@@ -224,22 +259,62 @@ async function init() {
 }
 
 function initializeMap() {
+  const initialMinZoom = getResponsiveMinZoom();
+
+  state.countryRenderer = L.svg({
+    padding: 1.6,
+  });
+
   state.map = L.map("map", {
     center: [20, 0],
-    zoom: 2,
-    minZoom: 2,
+    zoom: initialMinZoom,
+    minZoom: initialMinZoom,
     maxZoom: 6,
     zoomControl: true,
-    worldCopyJump: true,
+    worldCopyJump: false,
+    maxBounds: WORLD_BOUNDS,
+    maxBoundsViscosity: 1,
   });
 
   L.tileLayer("https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png", {
     attribution: '&copy; <a href="https://carto.com/">CARTO</a> | By Athanasios Papazikos',
+    bounds: WORLD_BOUNDS,
+    keepBuffer: 8,
+    noWrap: true,
   }).addTo(state.map);
 
   state.map.on("click", () => {
+    if (Date.now() < state.suppressMapClickUntil) {
+      return;
+    }
     clearSelectedCountry();
   });
+
+  state.map.on("resize", syncMapViewport);
+  syncMapViewport();
+}
+
+function getResponsiveMinZoom() {
+  const mapElement = document.getElementById("map");
+  const mapWidth = mapElement?.clientWidth || window.innerWidth || 1024;
+  const zoomNeededToFillWidth = Math.ceil(Math.log2(mapWidth / 256));
+  return Math.max(2, Math.min(4, zoomNeededToFillWidth));
+}
+
+function syncMapViewport() {
+  if (!state.map) {
+    return;
+  }
+
+  const minZoom = getResponsiveMinZoom();
+  if (state.map.getMinZoom() !== minZoom) {
+    state.map.setMinZoom(minZoom);
+  }
+  if (state.map.getZoom() < minZoom) {
+    state.map.setZoom(minZoom, { animate: false });
+  }
+  state.map.setMaxBounds(WORLD_BOUNDS);
+  state.map.panInsideBounds(WORLD_BOUNDS, { animate: false });
 }
 
 function renderCodeOptions(codes) {
@@ -346,10 +421,14 @@ async function refreshMapData() {
     ])
   );
   state.mapData.countriesCanonical = state.mapData.countries.map(canonicalCountryName);
+  state.mapData.countryNameByCanonical = Object.fromEntries(
+    state.mapData.countries.map((country) => [canonicalCountryName(country), country])
+  );
 
   state.selectedCountry = null;
   state.countryDetail = null;
   state.hoveredCountry = null;
+  state.hoveredLayer = null;
 
   updateLegend();
   renderCountrySearchResults();
@@ -372,42 +451,58 @@ function updateLegend() {
 
 function buildGeoJsonLayer() {
   state.geojsonLayer = L.geoJSON(state.geojson, {
+    bubblingMouseEvents: false,
+    interactive: true,
+    renderer: state.countryRenderer,
+    smoothFactor: 0.8,
     style: (feature) => getFeatureStyle(feature),
     onEachFeature: (feature, layer) => {
       const featureName = getFeatureName(feature);
       state.featureLayers.set(canonicalCountryName(featureName), layer);
       layer.on({
         mouseover: (event) => {
+          if (state.hoveredLayer && state.hoveredLayer !== event.target) {
+            applyLayerStyle(state.hoveredLayer);
+          }
           state.hoveredCountry = getFeatureName(event.target.feature);
+          state.hoveredLayer = event.target;
           state.mouse = {
             x: event.originalEvent.clientX,
             y: event.originalEvent.clientY,
           };
           renderTooltip();
-          refreshLayerStyles();
+          applyLayerStyle(event.target);
         },
-        mouseout: () => {
+        mouseout: (event) => {
           state.hoveredCountry = null;
+          if (state.hoveredLayer === event.target) {
+            state.hoveredLayer = null;
+          }
           renderTooltip();
-          refreshLayerStyles();
+          applyLayerStyle(event.target);
         },
         mousemove: (event) => {
           state.mouse = {
             x: event.originalEvent.clientX,
             y: event.originalEvent.clientY,
           };
-          renderTooltip();
+          queueTooltipRender();
         },
         click: async (event) => {
-          if (event.originalEvent) {
-            event.originalEvent.preventDefault();
-            event.originalEvent.stopPropagation();
-          }
+          stopMapClick(event);
           await selectCountry(getFeatureName(event.target.feature));
         },
       });
     },
   }).addTo(state.map);
+}
+
+function stopMapClick(event) {
+  state.suppressMapClickUntil = Date.now() + 350;
+  if (!event.originalEvent) {
+    return;
+  }
+  L.DomEvent.stop(event.originalEvent);
 }
 
 function getFeatureName(feature) {
@@ -417,7 +512,7 @@ function getFeatureName(feature) {
 function getFeatureStyle(feature) {
   const country = getFeatureName(feature);
   const canonical = canonicalCountryName(country);
-  const value = state.mapData?.mapValuesByCanonical?.[canonical]?.paidEmissions ?? null;
+  const value = getMapValue(country);
   const color = getColor(value);
   const isHovered = state.hoveredCountry && canonicalCountryName(state.hoveredCountry) === canonical;
 
@@ -429,6 +524,13 @@ function getFeatureStyle(feature) {
     color: "#ffffff",
     opacity: 1,
   };
+}
+
+function applyLayerStyle(layer) {
+  if (!layer) {
+    return;
+  }
+  layer.setStyle(getFeatureStyle(layer.feature));
 }
 
 function refreshLayerStyles() {
@@ -480,18 +582,31 @@ function renderCountrySearchResults() {
 }
 
 async function selectCountry(country) {
-  if (!countryHasAnyData(country)) {
+  const override = getCountryDataOverride(country);
+  const requestedCountry = override?.sourceCountry || country;
+  const apiCountry = resolveApiCountryName(requestedCountry);
+  if (!countryHasAnyData(requestedCountry)) {
     return;
   }
 
-  state.selectedCountry = country;
-  state.countryDetail = await fetchJson("/api/country", {
+  const requestId = ++state.selectionRequestId;
+  const countryDetail = await fetchJson("/api/country", {
     cn_code: state.selectedCode,
     year: state.selectedYear,
-    country,
+    country: apiCountry,
   });
 
-  refreshLayerStyles();
+  if (requestId !== state.selectionRequestId) {
+    return;
+  }
+
+  if (override) {
+    countryDetail.country = override.displayCountry;
+    countryDetail.mirroredFrom = null;
+  }
+
+  state.selectedCountry = override?.displayCountry || apiCountry;
+  state.countryDetail = countryDetail;
   renderCountryDetail();
 }
 
@@ -499,10 +614,21 @@ function clearSelectedCountry() {
   if (!state.selectedCountry && !state.countryDetail) {
     return;
   }
+  state.selectionRequestId += 1;
   state.selectedCountry = null;
   state.countryDetail = null;
-  refreshLayerStyles();
   renderCountryDetail();
+}
+
+function queueTooltipRender() {
+  if (state.tooltipRenderQueued) {
+    return;
+  }
+  state.tooltipRenderQueued = true;
+  window.requestAnimationFrame(() => {
+    state.tooltipRenderQueued = false;
+    renderTooltip();
+  });
 }
 
 function renderTooltip() {

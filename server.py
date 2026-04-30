@@ -20,6 +20,7 @@ MIRRORED_COUNTRIES = {
     "Northern Cyprus": "Turkey",
     "Somaliland": "Somalia",
 }
+SILENT_MIRRORED_COUNTRIES = {"Northern Cyprus"}
 
 
 def route_label(route: str) -> str:
@@ -72,7 +73,11 @@ def get_country_rows(
             """,
             (cn_code, year, mirrored_from),
         ).fetchall()
-        return rows, mirrored_from if rows else None
+        if not rows:
+            return [], None
+        if country in SILENT_MIRRORED_COUNTRIES:
+            return rows, None
+        return rows, mirrored_from
 
     rows = connection.execute(
         """
@@ -287,6 +292,7 @@ def get_map_data(cn_code: str, year: int) -> dict:
             continue
         rows_by_country[mirrored_country] = source_rows
         display = choose_display_value(source_rows)
+        is_silent_mirror = mirrored_country in SILENT_MIRRORED_COUNTRIES
         max_value = max(max_value, float(display["paidEmissions"]))
         min_value = (
             float(display["paidEmissions"])
@@ -298,10 +304,12 @@ def get_map_data(cn_code: str, year: int) -> dict:
             {
                 "country": mirrored_country,
                 "paidEmissions": display["paidEmissions"],
-                "sourceType": "mirrored_country",
-                "sourceLabel": f"Mirrored from {source_country}",
+                "sourceType": display["sourceType"] if is_silent_mirror else "mirrored_country",
+                "sourceLabel": (
+                    display["sourceLabel"] if is_silent_mirror else f"Mirrored from {source_country}"
+                ),
                 "routeCount": display["routeCount"],
-                "mirroredFrom": source_country,
+                **({} if is_silent_mirror else {"mirroredFrom": source_country}),
             }
         )
 
