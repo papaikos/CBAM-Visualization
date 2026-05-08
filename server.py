@@ -16,6 +16,7 @@ HOST = os.environ.get("HOST", "0.0.0.0")
 PORT = int(os.environ.get("PORT", "8000"))
 YEARS = [2026, 2027]
 DEFAULT_CN_CODE = "76011010"
+ZERO_EMISSION_COUNTRIES = {"Andorra", "San Marino", "Vatican"}
 MIRRORED_COUNTRIES = {
     "Kosovo": "Serbia",
     "Northern Cyprus": "Turkey",
@@ -26,6 +27,38 @@ SILENT_MIRRORED_COUNTRIES = {"Northern Cyprus"}
 
 def route_label(route: str) -> str:
     return route if route else "Unspecified"
+
+
+def zero_emission_display() -> dict:
+    return {
+        "paidEmissions": 0.0,
+        "sourceType": "zero_override",
+        "sourceLabel": "Unspecified route",
+        "routeCount": 1,
+        "displayRouteValue": "",
+    }
+
+
+def zero_emission_detail(cn_code: str, year: int, country: str) -> dict:
+    display = zero_emission_display()
+    return {
+        "cnCode": cn_code,
+        "year": year,
+        "country": country,
+        "mirroredFrom": None,
+        "displayValue": display["paidEmissions"],
+        "displaySourceType": display["sourceType"],
+        "displaySourceLabel": display["sourceLabel"],
+        "routes": [
+            {
+                "value": "",
+                "label": route_label(""),
+                "paidEmissions": 0.0,
+                "isDisplayedValue": True,
+                "duplicateCount": 1,
+            }
+        ],
+    }
 
 
 def choose_display_value(rows: list[sqlite3.Row]) -> dict:
@@ -287,6 +320,20 @@ def get_map_data(cn_code: str, year: int) -> dict:
             }
         )
 
+    for zero_country in ZERO_EMISSION_COUNTRIES:
+        display = zero_emission_display()
+        rows_by_country[zero_country] = []
+        map_values = [item for item in map_values if item["country"] != zero_country]
+        map_values.append(
+            {
+                "country": zero_country,
+                "paidEmissions": display["paidEmissions"],
+                "sourceType": display["sourceType"],
+                "sourceLabel": display["sourceLabel"],
+                "routeCount": display["routeCount"],
+            }
+        )
+
     for mirrored_country, source_country in MIRRORED_COUNTRIES.items():
         source_rows = rows_by_country.get(source_country)
         if not source_rows:
@@ -314,6 +361,11 @@ def get_map_data(cn_code: str, year: int) -> dict:
             }
         )
 
+    if map_values:
+        displayed_values = [float(item["paidEmissions"]) for item in map_values]
+        min_value = min(displayed_values)
+        max_value = max(displayed_values)
+
     map_values.sort(key=lambda item: item["country"])
     return {
         "cnCode": cn_code,
@@ -338,6 +390,9 @@ def get_map_data(cn_code: str, year: int) -> dict:
 def get_country_detail(cn_code: str, year: int, country: str) -> dict:
     if year not in YEARS:
         raise ValueError(f"Unsupported year: {year}")
+
+    if country in ZERO_EMISSION_COUNTRIES:
+        return zero_emission_detail(cn_code, year, country)
 
     with connect() as connection:
         rows, mirrored_from = get_country_rows(connection, cn_code, year, country)

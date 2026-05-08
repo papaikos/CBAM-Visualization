@@ -11,23 +11,19 @@
       integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
       crossorigin=""
     />
-    <link rel="stylesheet" href="/styles.css?v=20260430disclaimer" />
+    <link rel="stylesheet" href="/styles.css?v=20260508disclaimermodal" />
   </head>
   <body>
     <div class="app-shell">
       <header class="topbar">
         <div class="title-block">
-          <h1>Global Trade Insights</h1>
-          <p>CBAM Visualization By Athanasios Papazikos</p>
-          <details class="disclaimer-disclosure">
-            <summary>Disclaimer</summary>
-            <p>
-              This is an informal project for general information only. It is not legal, tax,
-              accounting, financial, regulatory, or CBAM compliance advice. Data and calculations
-              may be incomplete or inaccurate. Use at your own risk; the creator, contributors, and
-              hosts provide it as-is and disclaim liability to the fullest extent permitted by law.
-            </p>
-          </details>
+          <div class="title-copy">
+            <h1>Global Trade Insights</h1>
+            <p>CBAM Visualization By Athanasios Papazikos</p>
+          </div>
+          <button id="disclaimer-open" class="disclaimer-trigger" type="button">
+            Disclaimer
+          </button>
         </div>
 
         <div class="toolbar">
@@ -48,6 +44,26 @@
           </div>
         </div>
       </header>
+
+      <dialog id="disclaimer-dialog" class="disclaimer-dialog" aria-labelledby="disclaimer-title">
+        <div class="disclaimer-modal">
+          <button id="disclaimer-close" class="modal-close" type="button" aria-label="Close disclaimer">x</button>
+          <div class="disclaimer-icon" aria-hidden="true">!</div>
+          <div class="disclaimer-copy">
+            <p class="eyebrow">Project disclaimer</p>
+            <h2 id="disclaimer-title">Informational thesis project</h2>
+            <p>
+              This is an informal project for general information only. It is not legal, tax,
+              accounting, financial, regulatory, or CBAM compliance advice.
+            </p>
+            <p>
+              Data and calculations may be incomplete or inaccurate. Use at your own risk; the
+              creator, contributors, and hosts provide it as-is and disclaim liability to the fullest
+              extent permitted by law.
+            </p>
+          </div>
+        </div>
+      </dialog>
 
       <main class="map-stage">
         <div id="map"></div>
@@ -86,6 +102,6 @@
       integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
       crossorigin=""
     ></script>
-    <script src="/app.js?v=20260430disclaimer" defer></script>
+    <script src="/app.js?v=20260508disclaimermodal" defer></script>
   </body>
 </html>

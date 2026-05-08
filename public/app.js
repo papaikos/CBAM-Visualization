@@ -37,6 +37,9 @@ const elements = {
   legendMin: document.getElementById("legend-min"),
   legendMax: document.getElementById("legend-max"),
   hoverTooltip: document.getElementById("hover-tooltip"),
+  disclaimerOpen: document.getElementById("disclaimer-open"),
+  disclaimerDialog: document.getElementById("disclaimer-dialog"),
+  disclaimerClose: document.getElementById("disclaimer-close"),
 };
 
 const COUNTRY_ALIASES = {
@@ -397,6 +400,20 @@ function bindEvents() {
   document.addEventListener("click", (event) => {
     if (!event.target.closest(".search-card")) {
       elements.countrySearchResults.classList.add("hidden");
+    }
+  });
+
+  elements.disclaimerOpen.addEventListener("click", () => {
+    elements.disclaimerDialog.showModal();
+  });
+
+  elements.disclaimerClose.addEventListener("click", () => {
+    elements.disclaimerDialog.close();
+  });
+
+  elements.disclaimerDialog.addEventListener("click", (event) => {
+    if (event.target === elements.disclaimerDialog) {
+      elements.disclaimerDialog.close();
     }
   });
 }
