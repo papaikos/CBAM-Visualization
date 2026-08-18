@@ -10,3 +10,14 @@ __pycache__/
 output_country_specific.csv
 codebase
 Thumbs.db
+.codex/*
+!.codex/agents/
+!.codex/agents/**
+!.codex/skills/
+!.codex/skills/**
+.codex/skills/.system/**
+!.codex/prompts/
+!.codex/prompts/**
+.fuse_hidden*
+data/cbam_old.sqlite3
+emissions_updated.csv
