@@ -3,10 +3,26 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+from contextlib import closing
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
+
+from batch_excel import (
+    MAX_WORKBOOK_BYTES,
+    WorkbookFormatError,
+    WorkbookTooLarge,
+    build_input_template,
+    build_report_workbook,
+    parse_input_workbook,
+)
+from batch_report import (
+    SourceRowsUnavailable,
+    UnsupportedYear,
+    build_batch_report,
+    get_batch_meta,
+)
 
 
 ROOT = Path(__file__).resolve().parent
@@ -23,6 +39,8 @@ MIRRORED_COUNTRIES = {
     "Somaliland": "Somalia",
 }
 SILENT_MIRRORED_COUNTRIES = {"Northern Cyprus"}
+MAX_JSON_BYTES = 10 * 1024 * 1024
+XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 
 def route_label(route: str) -> str:
@@ -167,6 +185,19 @@ class AppHandler(SimpleHTTPRequestHandler):
             return
 
         try:
+            if parsed.path == "/api/batch-meta":
+                self.write_json(HTTPStatus.OK, get_batch_meta(DB_PATH))
+                return
+            if parsed.path == "/api/batch-template":
+                workbook = build_input_template(get_batch_meta(DB_PATH))
+                write_binary(
+                    self,
+                    HTTPStatus.OK,
+                    workbook,
+                    XLSX_MIME,
+                    "CBAM_Batch_Input_Template.xlsx",
+                )
+                return
             if parsed.path == "/api/meta":
                 self.write_json(HTTPStatus.OK, get_meta())
                 return
@@ -183,6 +214,12 @@ class AppHandler(SimpleHTTPRequestHandler):
                 country = unquote(require_query_value(params, "country"))
                 self.write_json(HTTPStatus.OK, get_country_detail(cn_code, year, country))
                 return
+        except SourceRowsUnavailable as exc:
+            self.write_json(
+                HTTPStatus.SERVICE_UNAVAILABLE,
+                {"error": "source_rows_unavailable", "message": str(exc)},
+            )
+            return
         except ValueError as exc:
             self.write_json(HTTPStatus.BAD_REQUEST, {"error": "bad_request", "message": str(exc)})
             return
@@ -201,6 +238,101 @@ class AppHandler(SimpleHTTPRequestHandler):
             {"error": "not_found", "message": f"Unknown API path: {parsed.path}"},
         )
 
+    def do_POST(self) -> None:  # noqa: N802
+        parsed = urlparse(self.path)
+        if parsed.path not in {
+            "/api/batch-import",
+            "/api/batch-report",
+            "/api/batch-export",
+        }:
+            self.write_json(
+                HTTPStatus.NOT_FOUND,
+                {"error": "not_found", "message": f"Unknown API path: {parsed.path}"},
+            )
+            return
+
+        try:
+            if parsed.path == "/api/batch-import":
+                content_type = self.headers.get("Content-Type", "").split(";", 1)[0].strip()
+                if content_type != XLSX_MIME:
+                    self.write_json(
+                        HTTPStatus.BAD_REQUEST,
+                        {
+                            "error": "unsupported_workbook_type",
+                            "message": "Upload a standard .xlsx workbook.",
+                        },
+                    )
+                    return
+                body = read_required_body(self, MAX_WORKBOOK_BYTES)
+                self.write_json(HTTPStatus.OK, parse_input_workbook(body))
+                return
+
+            content_type = self.headers.get("Content-Type", "").split(";", 1)[0].strip()
+            if content_type != "application/json":
+                self.write_json(
+                    HTTPStatus.BAD_REQUEST,
+                    {"error": "invalid_json", "message": "Content-Type must be application/json."},
+                )
+                return
+            body = read_required_body(self, MAX_JSON_BYTES)
+            try:
+                payload = json.loads(body.decode("utf-8"))
+            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                raise InvalidJson("The request body is not valid JSON.") from exc
+
+            report = build_batch_report(DB_PATH, payload)
+            if parsed.path == "/api/batch-report":
+                self.write_json(HTTPStatus.OK, report)
+                return
+            workbook = build_report_workbook(report)
+            write_binary(
+                self,
+                HTTPStatus.OK,
+                workbook,
+                XLSX_MIME,
+                f"CBAM_Batch_Report_{report['year']}.xlsx",
+            )
+        except PayloadTooLarge as exc:
+            self.write_json(
+                HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
+                {"error": exc.code, "message": str(exc)},
+            )
+        except WorkbookTooLarge as exc:
+            self.write_json(
+                HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
+                {"error": exc.code, "message": str(exc)},
+            )
+        except WorkbookFormatError as exc:
+            self.write_json(
+                HTTPStatus.BAD_REQUEST,
+                {"error": exc.code, "message": str(exc)},
+            )
+        except InvalidJson as exc:
+            self.write_json(
+                HTTPStatus.BAD_REQUEST,
+                {"error": "invalid_json", "message": str(exc)},
+            )
+        except UnsupportedYear as exc:
+            self.write_json(
+                HTTPStatus.BAD_REQUEST,
+                {"error": "unsupported_year", "message": str(exc)},
+            )
+        except SourceRowsUnavailable as exc:
+            self.write_json(
+                HTTPStatus.SERVICE_UNAVAILABLE,
+                {"error": "source_rows_unavailable", "message": str(exc)},
+            )
+        except ValueError as exc:
+            self.write_json(
+                HTTPStatus.BAD_REQUEST,
+                {"error": "bad_request", "message": str(exc)},
+            )
+        except Exception as exc:  # pragma: no cover - defensive API wrapper
+            self.write_json(
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+                {"error": "internal_error", "message": str(exc)},
+            )
+
     def write_json(self, status: HTTPStatus, payload: dict) -> None:
         body = json.dumps(payload).encode("utf-8")
         self.send_response(int(status))
@@ -209,6 +341,48 @@ class AppHandler(SimpleHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(body)
+
+
+class InvalidJson(ValueError):
+    pass
+
+
+class PayloadTooLarge(ValueError):
+    def __init__(self, message: str, code: str = "payload_too_large") -> None:
+        super().__init__(message)
+        self.code = code
+
+
+def read_required_body(handler: AppHandler, maximum_bytes: int) -> bytes:
+    raw_length = handler.headers.get("Content-Length")
+    if raw_length is None:
+        raise ValueError("Content-Length is required.")
+    try:
+        length = int(raw_length)
+    except ValueError as exc:
+        raise ValueError("Content-Length must be a non-negative integer.") from exc
+    if length < 0:
+        raise ValueError("Content-Length must be a non-negative integer.")
+    if length > maximum_bytes:
+        code = "workbook_too_large" if maximum_bytes == MAX_WORKBOOK_BYTES else "payload_too_large"
+        raise PayloadTooLarge("Request body exceeds the allowed size.", code=code)
+    return handler.rfile.read(length)
+
+
+def write_binary(
+    handler: AppHandler,
+    status: HTTPStatus,
+    body: bytes,
+    content_type: str,
+    filename: str,
+) -> None:
+    handler.send_response(int(status))
+    handler.send_header("Content-Type", content_type)
+    handler.send_header("Content-Length", str(len(body)))
+    handler.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+    handler.send_header("Cache-Control", "no-store")
+    handler.end_headers()
+    handler.wfile.write(body)
 
 
 def require_query_value(params: dict[str, list[str]], key: str) -> str:
@@ -236,7 +410,7 @@ def get_health() -> tuple[HTTPStatus, dict]:
         )
 
     try:
-        with connect() as connection:
+        with closing(connect()) as connection:
             has_rows = connection.execute("SELECT 1 FROM emissions LIMIT 1").fetchone() is not None
     except sqlite3.Error as exc:
         return (
@@ -252,7 +426,7 @@ def get_health() -> tuple[HTTPStatus, dict]:
 
 
 def get_meta() -> dict:
-    with connect() as connection:
+    with closing(connect()) as connection:
         codes = [
             row["cn_code"]
             for row in connection.execute(
@@ -283,7 +457,7 @@ def get_map_data(cn_code: str, year: int) -> dict:
     if year not in YEARS:
         raise ValueError(f"Unsupported year: {year}")
 
-    with connect() as connection:
+    with closing(connect()) as connection:
         rows = connection.execute(
             """
             SELECT country, production_route, paid_emissions, duplicate_count
@@ -394,7 +568,7 @@ def get_country_detail(cn_code: str, year: int, country: str) -> dict:
     if country in ZERO_EMISSION_COUNTRIES:
         return zero_emission_detail(cn_code, year, country)
 
-    with connect() as connection:
+    with closing(connect()) as connection:
         rows, mirrored_from = get_country_rows(connection, cn_code, year, country)
         if not rows:
             raise LookupError(f"No country data found for {country} for CN code {cn_code} in {year}")

@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Create multi-line CBAM emissions and estimated cost reports from CN codes and countries."
+    />
+    <title>Batch Report · Global Trade Insights</title>
+    <link rel="icon" href="/favicon.svg?v=20260430" type="image/svg+xml" />
+    <link rel="stylesheet" href="/tabs.css?v=20260818batch" />
+    <link rel="stylesheet" href="/batch-report.css?v=20260819upload" />
+  </head>
+  <body class="batch-body">
+    <div class="batch-shell">
+      <header class="batch-topbar">
+        <div class="site-brand">
+          <a class="brand-mark" href="/" aria-label="Global Trade Insights home">
+            <img class="brand-image" src="/cbam-brand.png" alt="CBAM" />
+          </a>
+          <div>
+            <p class="brand-kicker">CBAM visualization</p>
+            <p class="brand-title">Global Trade Insights</p>
+          </div>
+        </div>
+        <nav class="primary-nav" aria-label="Primary navigation">
+          <a class="primary-nav-link" href="/">Map Explorer</a>
+          <a class="primary-nav-link active" href="/batch.html" aria-current="page">Batch Report</a>
+        </nav>
+      </header>
+
+      <main class="batch-main">
+        <section class="batch-hero" aria-labelledby="batch-title">
+          <div class="hero-copy">
+            <p class="section-kicker">Multi-line analysis</p>
+            <h1 id="batch-title">Build a clear CBAM batch report.</h1>
+            <p>
+              Enter rows manually or bring an Excel file, then review emissions and optional
+              estimated costs in one organized report.
+            </p>
+          </div>
+          <div class="hero-year" aria-labelledby="year-label">
+            <span id="year-label">Reporting year</span>
+            <div id="batch-year-buttons" class="batch-year-buttons"></div>
+          </div>
+        </section>
+
+        <section
+          id="batch-input-card"
+          class="workspace-card input-card"
+          aria-labelledby="input-title"
+          aria-describedby="batch-drop-hint"
+        >
+          <div class="card-heading">
+            <div>
+              <p class="section-kicker">01 · Input</p>
+              <h2 id="input-title">Products and origins</h2>
+            </div>
+            <div class="card-actions">
+              <button id="download-template" class="button button-quiet" type="button">
+                <span aria-hidden="true">↓</span> Excel template
+              </button>
+              <button id="upload-workbook" class="button button-quiet" type="button">
+                <span aria-hidden="true">↑</span> Upload Excel
+              </button>
+              <input
+                id="batch-file-input"
+                class="visually-hidden"
+                type="file"
+                accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                aria-label="Choose an Excel workbook to import"
+              />
+            </div>
+          </div>
+
+          <p id="batch-drop-hint" class="drop-hint">
+            <span aria-hidden="true">＋</span>
+            Drop one .xlsx file anywhere in this card to append its rows.
+          </p>
+
+          <div id="batch-status" class="status-region" role="status" aria-live="polite">
+            Ready for manual entry or an Excel upload.
+          </div>
+
+          <div class="input-table-wrap">
+            <table class="input-table">
+              <thead>
+                <tr>
+                  <th scope="col">CN code <span class="required">Required</span></th>
+                  <th scope="col">Country <span class="required">Required</span></th>
+                  <th scope="col">Weight <span class="unit">tonnes</span></th>
+                  <th scope="col">CO₂ price <span class="unit">EUR/tCO₂</span></th>
+                  <th scope="col" aria-label="Remove row"></th>
+                </tr>
+              </thead>
+              <tbody id="batch-input-rows"></tbody>
+            </table>
+          </div>
+
+          <datalist id="batch-code-options"></datalist>
+          <datalist id="batch-country-options"></datalist>
+
+          <div class="input-footer">
+            <button id="add-row" class="button button-secondary" type="button">
+              <span aria-hidden="true">+</span> Add row
+            </button>
+            <button id="generate-report" class="button button-primary" type="button">
+              Generate report <span aria-hidden="true">→</span>
+            </button>
+          </div>
+        </section>
+
+        <section id="report-section" class="workspace-card results-card" aria-labelledby="results-title">
+          <div class="card-heading results-heading">
+            <div>
+              <p class="section-kicker">02 · Report</p>
+              <h2 id="results-title">Calculated results</h2>
+            </div>
+            <button id="export-report" class="button button-export" type="button" disabled>
+              Export report to Excel
+            </button>
+          </div>
+
+          <div id="duplicate-warning" class="warning-banner hidden" role="note"></div>
+          <div id="batch-issues" class="issues-panel hidden" aria-live="polite"></div>
+          <div id="report-summary" class="report-summary hidden"></div>
+
+          <div id="results-empty" class="results-empty">
+            <div class="empty-icon" aria-hidden="true">↗</div>
+            <h3>Your report will appear here</h3>
+            <p>Add one or more input rows and choose “Generate report”.</p>
+          </div>
+
+          <div id="batch-results" class="results-table-wrap hidden" tabindex="0">
+            <table class="results-table">
+              <thead>
+                <tr>
+                  <th scope="col">Line</th>
+                  <th scope="col">CN code</th>
+                  <th scope="col">Country</th>
+                  <th scope="col">Production route</th>
+                  <th scope="col">Weight</th>
+                  <th scope="col">Emissions / tonne</th>
+                  <th scope="col">Total emissions</th>
+                  <th scope="col">CO₂ price</th>
+                  <th scope="col">Cost / tonne</th>
+                  <th scope="col">Estimated total</th>
+                </tr>
+              </thead>
+              <tbody id="batch-results-body"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <p class="batch-disclaimer">
+          Academic estimate only. Verify all values against applicable EU legislation before
+          reporting, filing, or compliance use.
+        </p>
+      </main>
+    </div>
+
+    <noscript>This page requires JavaScript to build and export batch reports.</noscript>
+    <script src="/batch-report.js?v=20260819status" defer></script>
+  </body>
+</html>

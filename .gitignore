@@ -1,6 +1,14 @@
 .omx/
 __pycache__/
 *.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+node_modules/
+*.log
+.DS_Store
 *.sqlite3-shm
 *.sqlite3-wal
 *.sqlite3-journal
@@ -21,3 +29,4 @@ Thumbs.db
 .fuse_hidden*
 data/cbam_old.sqlite3
 emissions_updated.csv
+cn code analyzer.md
