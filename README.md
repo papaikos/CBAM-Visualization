@@ -18,6 +18,9 @@ It is not an official CBAM system, regulatory reporting platform, or compliance 
 - Country search with instant value previews
 - Country detail panel with displayed map value and available production routes
 - Optional CO2 price input for quick EUR/ton estimates
+- Separate Batch Report workspace for multi-line manual or Excel input
+- Downloadable, validated Excel input template
+- Professional three-sheet Excel report export
 - SQLite-backed API instead of hard-coded country data
 - Render-compatible deployment setup
 - Bundled runtime database, so no CSV upload is required for deployment
@@ -48,6 +51,63 @@ or with explicit paths:
 python import_csv.py --csv /path/to/output_country_specific.csv --db data/cbam.sqlite3
 ```
 
+### Batch data mode
+
+The Batch Report uses the committed `emissions` table directly and does not call the map display helpers, country mirrors, route averaging, or zero-emission display overrides. It returns one result for every matching record stored in SQLite, so different production routes remain separate.
+
+The committed database contains one averaged value per `CN code + country + year + production route` and a `duplicate_count`; it does not contain the original individual source values. When `duplicate_count` is greater than one, the Batch Report shows a transparent warning. It does not fabricate or reconstruct unavailable source rows.
+
+This limitation is also recorded in every exported workbook.
+
+## Batch Report
+
+Open `/batch.html` or choose **Batch Report** in the top navigation.
+
+Select one global reporting year (`2026` or `2027`) and add any number of input lines. Each line contains:
+
+- `CN Code` — required and preserved as text
+- `Country` — required; suggestions come directly from SQLite
+- `Weight (tonnes)` — optional and defaults to `1.00`
+- `CO2 Price (EUR/tCO2)` — optional
+
+Empty rows are ignored. A partially completed or invalid row is shown as an issue without preventing other valid rows from producing results.
+
+### Calculations
+
+For each matching stored database record:
+
+```text
+emissions per tonne = stored paid emissions
+total emissions = emissions per tonne × weight tonnes
+estimated cost per tonne = emissions per tonne × CO2 price
+estimated total cost = emissions per tonne × weight tonnes × CO2 price
+```
+
+Total emissions appears only when weight differs from `1.0`. Cost fields appear only when a CO2 price is supplied, and total cost additionally requires weight to differ from `1.0`.
+
+### Excel input and export
+
+Download `CBAM_Batch_Input_Template.xlsx` from the Batch Report page. The `Input` worksheet name and these headers are matched case-insensitively after trimming:
+
+```text
+CN Code
+Country
+Weight (tonnes)
+CO2 Price (EUR/tCO2)
+```
+
+Only standard `.xlsx` workbooks are accepted. The server enforces a 5 MiB upload limit and a 50 MiB maximum uncompressed workbook size. Legacy `.xls`, macro-enabled `.xlsm`, password-protected, malformed, and incorrectly structured files are rejected.
+
+Numeric Excel cells stay numeric. Text values with one decimal comma (for example `1,5`) are accepted for weight and CO2 price. Formula cells are reported as input issues instead of being treated as blank defaults; paste their calculated values before uploading.
+
+The exported `CBAM_Batch_Report_YYYY.xlsx` contains:
+
+- `Report` — matching stored records and calculated values
+- `Input Issues` — invalid or unmatched Excel and manual input lines, including rows skipped before calculation
+- `Methodology & Disclaimer` — formulas, conditional-output rules, the aggregated-data limitation, timestamp, and disclaimer
+
+Text that could be interpreted as an Excel formula is written as literal text. Numeric values remain numeric and intentionally unavailable conditional values remain blank.
+
 ## Display Logic
 
 For each selected `CN code + year`, the map displays every country that has available data.
@@ -69,13 +129,14 @@ Some map territories are handled with explicit display rules so the visualizatio
 - Database: SQLite
 - Deployment: Render web service
 
-No third-party Python packages are required.
+Excel processing uses pinned `openpyxl` and `defusedxml` dependencies.
 
 ## Local Development
 
 Start the local app:
 
 ```bash
+python -m pip install -r requirements.txt
 python server.py
 ```
 
@@ -103,6 +164,11 @@ http://127.0.0.1:8000
 - `/api/meta`
 - `/api/map-data?cn_code=76011000&year=2026`
 - `/api/country?cn_code=76011000&year=2026&country=Greece`
+- `GET /api/batch-meta`
+- `POST /api/batch-import`
+- `POST /api/batch-report`
+- `GET /api/batch-template`
+- `POST /api/batch-export`
 
 The health endpoint performs a real SQLite check, so deployment health checks fail if the database is missing or unreadable.
 

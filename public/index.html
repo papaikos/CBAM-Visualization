@@ -11,46 +11,93 @@
       integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
       crossorigin=""
     />
-    <link rel="stylesheet" href="/styles.css?v=20260508disclaimermodal" />
+    <link rel="stylesheet" href="/styles.css?v=20260819cnclear" />
+    <link rel="stylesheet" href="/tabs.css?v=20260818batch" />
   </head>
   <body>
     <div class="app-shell">
       <header class="topbar">
         <div class="title-block">
-          <div class="title-copy">
-            <h1>Global Trade Insights</h1>
-            <p>CBAM Visualization By Athanasios Papazikos</p>
+          <div class="title-copy site-brand">
+            <a class="brand-mark" href="/" aria-label="Global Trade Insights home">
+              <img class="brand-image" src="/cbam-brand.png" alt="CBAM" />
+            </a>
+            <div>
+              <p class="brand-kicker">CBAM visualization</p>
+              <h1 class="brand-title">Global Trade Insights</h1>
+            </div>
           </div>
+          <nav class="primary-nav" aria-label="Primary navigation">
+            <a class="primary-nav-link active" href="/" aria-current="page">Map Explorer</a>
+            <a class="primary-nav-link" href="/batch.html">Batch Report</a>
+          </nav>
           <button id="disclaimer-open" class="disclaimer-trigger" type="button">
             Disclaimer
           </button>
         </div>
 
         <div class="toolbar">
-          <label class="toolbar-field toolbar-field-wide">
-            <span>CN code</span>
-            <input id="cn-code-input" list="cn-code-options" autocomplete="off" />
+          <div class="toolbar-field toolbar-field-wide">
+            <label class="toolbar-field-label" for="cn-code-input">CN code</label>
+            <div class="cn-code-input-shell">
+              <input
+                id="cn-code-input"
+                value="76011010"
+                list="cn-code-options"
+                autocomplete="off"
+                aria-controls="cn-code-menu"
+              />
+              <button
+                id="cn-code-menu-toggle"
+                class="cn-code-menu-toggle"
+                type="button"
+                aria-label="Show all CN codes"
+                aria-expanded="false"
+                aria-controls="cn-code-menu"
+                disabled
+              >
+                ▼
+              </button>
+              <div id="cn-code-menu" class="cn-code-menu hidden" role="listbox"></div>
+            </div>
             <datalist id="cn-code-options"></datalist>
-          </label>
+          </div>
 
-          <label class="toolbar-field">
-            <span>CO2 price (EUR/tCO2)</span>
-            <input id="co2-price-input" type="number" min="0" step="0.01" placeholder="e.g. 65" />
+          <label class="toolbar-field co2-field">
+            <span class="toolbar-field-label">CO₂ price (EUR/tCO₂)</span>
+            <span class="co2-input-shell">
+              <input
+                id="co2-price-input"
+                type="number"
+                min="0"
+                step="0.01"
+                inputmode="decimal"
+                placeholder="e.g. 65 €"
+              />
+              <span id="co2-price-display" class="co2-price-display" aria-hidden="true"></span>
+            </span>
           </label>
 
           <div class="toolbar-field year-switcher">
-            <span>Year</span>
-            <div class="year-buttons" id="year-buttons"></div>
+            <span class="toolbar-field-label">Year</span>
+            <div class="year-buttons" id="year-buttons">
+              <button type="button" class="year-button active" data-year="2026">2026</button>
+              <button type="button" class="year-button" data-year="2027">2027</button>
+            </div>
           </div>
         </div>
       </header>
 
       <dialog id="disclaimer-dialog" class="disclaimer-dialog" aria-labelledby="disclaimer-title">
         <div class="disclaimer-modal">
-          <button id="disclaimer-close" class="modal-close" type="button" aria-label="Close disclaimer">x</button>
-          <div class="disclaimer-icon" aria-hidden="true">!</div>
-          <div class="disclaimer-copy">
+          <button id="disclaimer-close" class="modal-close" type="button" aria-label="Close disclaimer">
+            <span aria-hidden="true">×</span>
+          </button>
+          <div class="disclaimer-heading">
+            <div class="disclaimer-icon" aria-hidden="true">!</div>
             <p class="eyebrow">Project disclaimer</p>
+          </div>
+          <div class="disclaimer-copy">
             <h2 id="disclaimer-title">Informational thesis project</h2>
             <p>
               This is an informal project for general information only. It is not legal, tax,
@@ -103,5 +150,7 @@
       crossorigin=""
     ></script>
     <script src="/app.js?v=20260508disclaimermodal" defer></script>
+    <script src="/cn-code-picker.js?v=20260819fullmenu" defer></script>
+    <script src="/toolbar-interactions.js?v=20260819entercommit" defer></script>
   </body>
 </html>
