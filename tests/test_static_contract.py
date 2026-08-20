@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 class StaticContractTests(unittest.TestCase):
     def test_frontend_javascript_modules_are_unchanged(self) -> None:
-        expected = (ROOT / "tests/fixtures/js_modules.sha256").read_text().strip()
+        expected = (ROOT / "tests/fixtures/js_modules.sha256").read_text(encoding="utf-8").strip()
         digest = hashlib.sha256()
         for path in sorted((ROOT / "public/js").rglob("*.js")):
             digest.update(path.relative_to(ROOT).as_posix().encode())
@@ -35,11 +35,11 @@ class StaticContractTests(unittest.TestCase):
         actual = hashlib.sha256(
             json.dumps(rows, ensure_ascii=False, separators=(",", ":")).encode()
         ).hexdigest()
-        expected = (ROOT / "tests/fixtures/emissions_table.sha256").read_text().strip()
+        expected = (ROOT / "tests/fixtures/emissions_table.sha256").read_text(encoding="utf-8").strip()
         self.assertEqual(actual, expected)
 
     def test_map_page_has_non_invasive_top_level_navigation(self) -> None:
-        html = (ROOT / "public/index.html").read_text()
+        html = (ROOT / "public/index.html").read_text(encoding="utf-8")
         self.assertIn('href="/"', html)
         self.assertIn('href="/batch.html"', html)
         self.assertIn('aria-current="page">Map Explorer', html)
@@ -47,8 +47,8 @@ class StaticContractTests(unittest.TestCase):
         self.assertIn('id="map"', html)
 
     def test_map_and_batch_pages_share_the_compact_site_brand(self) -> None:
-        map_html = (ROOT / "public/index.html").read_text()
-        batch_html = (ROOT / "public/batch.html").read_text()
+        map_html = (ROOT / "public/index.html").read_text(encoding="utf-8")
+        batch_html = (ROOT / "public/batch.html").read_text(encoding="utf-8")
         for html in (map_html, batch_html):
             self.assertRegex(html, r'class="[^"]*\bsite-brand\b[^"]*"')
             self.assertIn('class="brand-mark"', html)
@@ -59,7 +59,7 @@ class StaticContractTests(unittest.TestCase):
     def test_shared_brand_uses_local_cbam_artwork_instead_of_initials(self) -> None:
         self.assertTrue((ROOT / "public/cbam-brand.png").is_file())
         for page in ("index.html", "batch.html"):
-            html = (ROOT / "public" / page).read_text()
+            html = (ROOT / "public" / page).read_text(encoding="utf-8")
             self.assertIn('class="brand-image"', html)
             self.assertIn('src="/cbam-brand.png"', html)
             self.assertIn('alt="CBAM"', html)
@@ -73,9 +73,9 @@ class StaticContractTests(unittest.TestCase):
         self.assertGreaterEqual(width, 512)
 
     def test_desktop_headers_share_right_aligned_mode_toggle_geometry(self) -> None:
-        map_css = (ROOT / "public/styles.css").read_text()
-        batch_css = (ROOT / "public/batch-report.css").read_text()
-        tabs_css = (ROOT / "public/tabs.css").read_text()
+        map_css = (ROOT / "public/styles.css").read_text(encoding="utf-8")
+        batch_css = (ROOT / "public/batch-report.css").read_text(encoding="utf-8")
+        tabs_css = (ROOT / "public/tabs.css").read_text(encoding="utf-8")
         self.assertIn("@media (min-width: 1200px)", map_css)
         self.assertIn(
             "grid-template-columns: minmax(13rem, 1fr) auto auto auto;",
@@ -91,8 +91,8 @@ class StaticContractTests(unittest.TestCase):
         self.assertIn("width: calc(100vw - 2rem);", tabs_css)
 
     def test_map_header_prerenders_stable_centered_control_defaults(self) -> None:
-        html = (ROOT / "public/index.html").read_text()
-        css = (ROOT / "public/styles.css").read_text()
+        html = (ROOT / "public/index.html").read_text(encoding="utf-8")
+        css = (ROOT / "public/styles.css").read_text(encoding="utf-8")
         self.assertRegex(html, r'id="cn-code-input"\s+value="76011010"')
         self.assertIn('list="cn-code-options"', html)
         self.assertIn('id="cn-code-menu-toggle"', html)
@@ -108,7 +108,7 @@ class StaticContractTests(unittest.TestCase):
         self.assertIn("text-align: center;", css)
 
     def test_custom_cn_picker_suppresses_native_datalist_chrome(self) -> None:
-        css = (ROOT / "public/styles.css").read_text()
+        css = (ROOT / "public/styles.css").read_text(encoding="utf-8")
         self.assertRegex(
             css,
             r"(?s)#cn-code-input\s*\{[^}]*appearance: none;[^}]*-webkit-appearance: none;",
@@ -119,21 +119,21 @@ class StaticContractTests(unittest.TestCase):
         )
 
     def test_co2_example_hides_only_while_the_empty_field_is_focused(self) -> None:
-        css = (ROOT / "public/styles.css").read_text()
+        css = (ROOT / "public/styles.css").read_text(encoding="utf-8")
         self.assertRegex(
             css,
             r"(?s)#co2-price-input:focus::placeholder\s*\{[^}]*opacity: 0;",
         )
 
     def test_desktop_map_header_groups_center_in_the_white_header(self) -> None:
-        html = (ROOT / "public/index.html").read_text()
-        css = (ROOT / "public/styles.css").read_text()
+        html = (ROOT / "public/index.html").read_text(encoding="utf-8")
+        css = (ROOT / "public/styles.css").read_text(encoding="utf-8")
         self.assertIn("CO₂ price (EUR/tCO₂)", html)
         self.assertNotIn("transform: translateY(0.65rem);", css)
 
     def test_desktop_map_labels_float_without_moving_the_control_row(self) -> None:
-        html = (ROOT / "public/index.html").read_text()
-        css = (ROOT / "public/styles.css").read_text()
+        html = (ROOT / "public/index.html").read_text(encoding="utf-8")
+        css = (ROOT / "public/styles.css").read_text(encoding="utf-8")
         self.assertIn(
             '<span class="toolbar-field-label">CO₂ price (EUR/tCO₂)</span>',
             html,
@@ -154,14 +154,14 @@ class StaticContractTests(unittest.TestCase):
         )
 
     def test_desktop_map_header_groups_share_the_same_small_downward_offset(self) -> None:
-        css = (ROOT / "public/styles.css").read_text()
+        css = (ROOT / "public/styles.css").read_text(encoding="utf-8")
         self.assertRegex(
             css,
             r"(?s)@media \(min-width: 1200px\).*?\.title-copy,\s*\.disclaimer-trigger,\s*\.toolbar,\s*\.title-block \.primary-nav\s*\{[^}]*transform: translateY\(4px\);",
         )
 
     def test_desktop_country_detail_card_stays_compact_over_the_map(self) -> None:
-        css = (ROOT / "public/styles.css").read_text()
+        css = (ROOT / "public/styles.css").read_text(encoding="utf-8")
         self.assertRegex(
             css,
             r"(?s)\.detail-card\s*\{[^}]*width: min\(clamp\(20rem, 30vw, 24rem\), calc\(100vw - 2rem\)\);[^}]*max-height: min\(62svh, 34rem\);",
@@ -172,14 +172,14 @@ class StaticContractTests(unittest.TestCase):
         )
 
     def test_map_country_search_is_compact_only_above_phone_width(self) -> None:
-        css = (ROOT / "public/styles.css").read_text()
+        css = (ROOT / "public/styles.css").read_text(encoding="utf-8")
         self.assertIn("@media (min-width: 761px)", css)
         self.assertIn("clamp(16rem, 24vw, 19.5rem)", css)
         self.assertIn("padding: clamp(0.7rem, 0.85vw, 0.8rem);", css)
         self.assertIn("height: clamp(2.3rem, 2.5vw, 2.55rem);", css)
 
     def test_batch_hero_uses_compact_professional_dimensions(self) -> None:
-        css = (ROOT / "public/batch-report.css").read_text()
+        css = (ROOT / "public/batch-report.css").read_text(encoding="utf-8")
         self.assertIn("padding: clamp(1.35rem, 2.5vw, 2.25rem);", css)
         self.assertIn("font-size: clamp(1.85rem, 3.2vw, 3rem);", css)
         self.assertIn("align-items: center;", css)
@@ -188,7 +188,7 @@ class StaticContractTests(unittest.TestCase):
         self.assertIn("min-height: 2.6rem;", css)
 
     def test_batch_page_exposes_accessible_controls_and_result_regions(self) -> None:
-        html = (ROOT / "public/batch.html").read_text()
+        html = (ROOT / "public/batch.html").read_text(encoding="utf-8")
         for expected in (
             'href="/"',
             'aria-current="page">Batch Report',
@@ -209,13 +209,13 @@ class StaticContractTests(unittest.TestCase):
         self.assertNotIn("countries.geojson", html)
 
     def test_batch_javascript_is_loaded_only_by_batch_page(self) -> None:
-        map_html = (ROOT / "public/index.html").read_text()
-        batch_html = (ROOT / "public/batch.html").read_text()
+        map_html = (ROOT / "public/index.html").read_text(encoding="utf-8")
+        batch_html = (ROOT / "public/batch.html").read_text(encoding="utf-8")
         self.assertNotIn("/js/batch/", map_html)
         self.assertIn('src="/js/batch/main.js"', batch_html)
 
     def test_scrollable_input_table_labels_action_column_without_off_canvas_text(self) -> None:
-        html = (ROOT / "public/batch.html").read_text()
+        html = (ROOT / "public/batch.html").read_text(encoding="utf-8")
         self.assertIn('<th scope="col" aria-label="Remove row"></th>', html)
         self.assertNotIn(
             '<th scope="col"><span class="visually-hidden">Remove row</span></th>',
@@ -223,7 +223,7 @@ class StaticContractTests(unittest.TestCase):
         )
 
     def test_batch_table_centers_route_and_remove_actions(self) -> None:
-        css = (ROOT / "public/batch-report.css").read_text()
+        css = (ROOT / "public/batch-report.css").read_text(encoding="utf-8")
         self.assertIn(
             ".results-table th:nth-child(4),\n"
             ".results-table td:nth-child(4) {\n"
