@@ -1,3 +1,5 @@
+"""Excel workbook building and parsing (input template, uploads, report export)."""
+
 from __future__ import annotations
 
 import math
@@ -14,7 +16,8 @@ from openpyxl.workbook.defined_name import DefinedName
 from openpyxl.worksheet.datavalidation import DataValidation
 from openpyxl.worksheet.properties import PageSetupProperties
 
-from batch_report import AGGREGATED_DUPLICATE_WARNING
+from app.errors import WorkbookFormatError, WorkbookTooLarge
+from app.services.batch import AGGREGATED_DUPLICATE_WARNING
 
 
 MAX_WORKBOOK_BYTES = 5 * 1024 * 1024
@@ -54,16 +57,6 @@ REPORT_HEADERS = [
     "Duplicate Source Rows",
     "Warning",
 ]
-
-
-class WorkbookFormatError(ValueError):
-    def __init__(self, message: str, code: str = "invalid_workbook") -> None:
-        super().__init__(message)
-        self.code = code
-
-
-class WorkbookTooLarge(WorkbookFormatError):
-    pass
 
 
 def validate_xlsx_archive(data: bytes) -> None:

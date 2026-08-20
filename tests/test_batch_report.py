@@ -6,12 +6,11 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-import batch_report
-
-from batch_report import (
+from app import db as app_db
+from app.errors import DatabaseUnavailable as SourceRowsUnavailable
+from app.errors import UnsupportedYear
+from app.services.batch import (
     AGGREGATED_DUPLICATE_WARNING,
-    SourceRowsUnavailable,
-    UnsupportedYear,
     build_batch_report,
     get_batch_meta,
 )
@@ -68,14 +67,14 @@ class BatchReportTests(unittest.TestCase):
 
     def test_database_connection_is_closed_after_meta_is_loaded(self) -> None:
         connections: list[sqlite3.Connection] = []
-        original_connect = batch_report._connect
+        original_connect = app_db.open_readonly
 
-        def tracked_connect(db_path: Path) -> sqlite3.Connection:
+        def tracked_connect(db_path: Path | None = None) -> sqlite3.Connection:
             connection = original_connect(db_path)
             connections.append(connection)
             return connection
 
-        with patch.object(batch_report, "_connect", side_effect=tracked_connect):
+        with patch.object(app_db, "open_readonly", side_effect=tracked_connect):
             get_batch_meta(self.db_path)
 
         self.assertEqual(len(connections), 1)
@@ -84,8 +83,8 @@ class BatchReportTests(unittest.TestCase):
 
     def test_weight_defaults_to_one_and_conditional_values_stay_blank(self) -> None:
         report = build_batch_report(
-            self.db_path,
-            {
+            db_path=self.db_path,
+            payload={
                 "year": 2026,
                 "lines": [
                     {
@@ -107,8 +106,8 @@ class BatchReportTests(unittest.TestCase):
 
     def test_custom_weight_and_price_calculations_are_numeric(self) -> None:
         report = build_batch_report(
-            self.db_path,
-            {
+            db_path=self.db_path,
+            payload={
                 "year": 2026,
                 "lines": [
                     {
@@ -128,8 +127,8 @@ class BatchReportTests(unittest.TestCase):
 
     def test_country_matching_is_case_insensitive_and_returns_canonical_name(self) -> None:
         report = build_batch_report(
-            self.db_path,
-            {
+            db_path=self.db_path,
+            payload={
                 "year": 2026,
                 "lines": [
                     {
@@ -145,8 +144,8 @@ class BatchReportTests(unittest.TestCase):
 
     def test_each_stored_route_is_returned_without_map_route_selection(self) -> None:
         report = build_batch_report(
-            self.db_path,
-            {
+            db_path=self.db_path,
+            payload={
                 "year": 2026,
                 "lines": [
                     {"inputLine": 1, "cnCode": "76011010", "country": "Türkiye"}
@@ -160,8 +159,8 @@ class BatchReportTests(unittest.TestCase):
 
     def test_duplicate_count_flags_one_warning_without_fabricating_rows(self) -> None:
         report = build_batch_report(
-            self.db_path,
-            {
+            db_path=self.db_path,
+            payload={
                 "year": 2026,
                 "lines": [
                     {"inputLine": 1, "cnCode": "76011010", "country": "Türkiye"}
@@ -179,8 +178,8 @@ class BatchReportTests(unittest.TestCase):
 
     def test_invalid_and_unmatched_lines_become_issues_without_blocking_valid_lines(self) -> None:
         report = build_batch_report(
-            self.db_path,
-            {
+            db_path=self.db_path,
+            payload={
                 "year": 2026,
                 "lines": [
                     {"inputLine": 1, "cnCode": "", "country": "Egypt"},
@@ -220,8 +219,8 @@ class BatchReportTests(unittest.TestCase):
 
     def test_excel_import_issues_are_preserved_with_valid_report_rows(self) -> None:
         report = build_batch_report(
-            self.db_path,
-            {
+            db_path=self.db_path,
+            payload={
                 "year": 2026,
                 "inputIssues": [
                     {
@@ -248,15 +247,15 @@ class BatchReportTests(unittest.TestCase):
 
     def test_fully_empty_rows_are_ignored(self) -> None:
         report = build_batch_report(
-            self.db_path,
-            {"year": 2026, "lines": [{"inputLine": 1, "cnCode": "", "country": ""}]},
+            db_path=self.db_path,
+            payload={"year": 2026, "lines": [{"inputLine": 1, "cnCode": "", "country": ""}]},
         )
         self.assertEqual(report["results"], [])
         self.assertEqual(report["issues"], [])
 
     def test_unsupported_year_is_rejected(self) -> None:
         with self.assertRaisesRegex(UnsupportedYear, "Unsupported year: 2025"):
-            build_batch_report(self.db_path, {"year": 2025, "lines": []})
+            build_batch_report({"year": 2025, "lines": []}, self.db_path)
 
     def test_missing_emissions_table_is_reported(self) -> None:
         missing_db = Path(self.temp_dir.name) / "missing.sqlite3"

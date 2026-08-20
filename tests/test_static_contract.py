@@ -12,10 +12,15 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class StaticContractTests(unittest.TestCase):
-    def test_map_javascript_is_byte_for_byte_unchanged(self) -> None:
-        expected = (ROOT / "tests/fixtures/app_js.sha256").read_text().strip()
-        actual = hashlib.sha256((ROOT / "public/app.js").read_bytes()).hexdigest()
-        self.assertEqual(actual, expected)
+    def test_frontend_javascript_modules_are_unchanged(self) -> None:
+        expected = (ROOT / "tests/fixtures/js_modules.sha256").read_text().strip()
+        digest = hashlib.sha256()
+        for path in sorted((ROOT / "public/js").rglob("*.js")):
+            digest.update(path.relative_to(ROOT).as_posix().encode())
+            digest.update(b"\0")
+            digest.update(path.read_bytes())
+            digest.update(b"\0")
+        self.assertEqual(digest.hexdigest(), expected)
 
     def test_map_emissions_records_are_unchanged(self) -> None:
         connection = sqlite3.connect(ROOT / "data/cbam.sqlite3")
@@ -92,7 +97,7 @@ class StaticContractTests(unittest.TestCase):
         self.assertIn('list="cn-code-options"', html)
         self.assertIn('id="cn-code-menu-toggle"', html)
         self.assertIn('id="cn-code-menu"', html)
-        self.assertIn('src="/cn-code-picker.js', html)
+        self.assertIn('src="/js/map/main.js"', html)
         self.assertIn('class="year-button active" data-year="2026"', html)
         self.assertIn('class="year-button" data-year="2027"', html)
         self.assertRegex(
@@ -206,8 +211,8 @@ class StaticContractTests(unittest.TestCase):
     def test_batch_javascript_is_loaded_only_by_batch_page(self) -> None:
         map_html = (ROOT / "public/index.html").read_text()
         batch_html = (ROOT / "public/batch.html").read_text()
-        self.assertNotIn("batch-report.js", map_html)
-        self.assertIn('src="/batch-report.js', batch_html)
+        self.assertNotIn("/js/batch/", map_html)
+        self.assertIn('src="/js/batch/main.js"', batch_html)
 
     def test_scrollable_input_table_labels_action_column_without_off_canvas_text(self) -> None:
         html = (ROOT / "public/batch.html").read_text()

@@ -1,7 +1,7 @@
-const assert = require("node:assert/strict");
-const test = require("node:test");
+import assert from "node:assert/strict";
+import test from "node:test";
 
-const {
+import {
   buildRequestPayload,
   createBlankLine,
   isSupportedWorkbook,
@@ -9,7 +9,7 @@ const {
   openWorkbookPicker,
   reportHasDuplicateWarnings,
   suggestionListForField,
-} = require("../public/batch-report.js");
+} from "../public/js/batch/model.js";
 
 
 test("blank rows use string inputs so CN codes are never coerced", () => {

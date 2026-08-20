@@ -2,7 +2,31 @@
 
 CBAM Visualization is an interactive web application for exploring country-specific Carbon Border Adjustment Mechanism (CBAM) values by CN code and year. The project was developed as part of a thesis by Athanasios Papazikos and is intended as an academic, exploratory, and educational visualization tool.
 
-The app combines a Leaflet-based world map, a local SQLite database, and a lightweight Python server. It is designed to make the underlying country and production-route data easier to inspect without relying on hard-coded frontend values.
+The app combines a Leaflet-based world map, a local SQLite database, and a FastAPI backend. It is designed to make the underlying country and production-route data easier to inspect without relying on hard-coded frontend values.
+
+## Architecture
+
+```text
+app/                    Python backend package
+  main.py               FastAPI application factory and static file serving
+  api.py                HTTP routes and the JSON error contract
+  config.py             Paths, supported years, and domain constants
+  db.py                 Read-only SQLite access helpers
+  errors.py             Domain exceptions with stable API error codes
+  services/
+    emissions.py        Map explorer queries (meta, map data, country detail)
+    batch.py            Batch report generation
+    excel.py            Excel template, upload parsing, and report export
+public/                 Static frontend (no build step)
+  js/lib/               Shared fetch/download helpers
+  js/map/               Map Explorer page modules
+  js/batch/             Batch Report page modules
+scripts/import_csv.py   Regenerates data/cbam.sqlite3 from the source CSV
+data/cbam.sqlite3       Bundled runtime database (read-only at runtime)
+tests/                  Python unittest suite and Node test files
+```
+
+The backend is layered: routes in `app/api.py` validate the HTTP surface and translate domain exceptions into a consistent `{"error": code, "message": text}` contract, while the service modules contain all query and calculation logic and never touch HTTP. The frontend uses native ES modules, so the pure logic (payload building, country-name normalization, color scale) is importable and unit-tested with `node --test` without any bundler.
 
 ## Project Context
 
@@ -42,13 +66,13 @@ output_country_specific.csv
 The SQLite database contains the runtime data needed by the application. If the source CSV changes locally, the database can be regenerated with:
 
 ```bash
-python import_csv.py
+python scripts/import_csv.py
 ```
 
 or with explicit paths:
 
 ```bash
-python import_csv.py --csv /path/to/output_country_specific.csv --db data/cbam.sqlite3
+python scripts/import_csv.py --csv /path/to/output_country_specific.csv --db data/cbam.sqlite3
 ```
 
 ### Batch data mode
@@ -123,10 +147,10 @@ Some map territories are handled with explicit display rules so the visualizatio
 
 ## Technology
 
-- Frontend: HTML, CSS, JavaScript
+- Frontend: HTML, CSS, JavaScript (native ES modules, no build step)
 - Map: Leaflet
-- Backend: Python standard library HTTP server
-- Database: SQLite
+- Backend: FastAPI served by uvicorn
+- Database: SQLite (opened read-only)
 - Deployment: Render web service
 
 Excel processing uses pinned `openpyxl` and `defusedxml` dependencies.
@@ -137,7 +161,7 @@ Start the local app:
 
 ```bash
 python -m pip install -r requirements.txt
-python server.py
+python -m app
 ```
 
 Open:
@@ -172,6 +196,16 @@ http://127.0.0.1:8000
 
 The health endpoint performs a real SQLite check, so deployment health checks fail if the database is missing or unreadable.
 
+## Tests
+
+```bash
+python -m pip install -r requirements-dev.txt
+python -m unittest discover -s tests -t .
+node --test tests/*.mjs
+```
+
+The Python suite covers the service layer, the HTTP contract (status codes, error codes, headers, downloads), and static page/CSS contracts, including a hash check that guards the bundled emissions data against accidental modification. The Node suite unit-tests the frontend's pure logic modules.
+
 ## Deployment On Render
 
 This repository includes:
@@ -188,7 +222,7 @@ Recommended Render settings:
 ```text
 Runtime: Python
 Build command: pip install -r requirements.txt
-Start command: python server.py
+Start command: python -m app
 Health check path: /api/health
 ```
 
@@ -198,8 +232,8 @@ Because `data/cbam.sqlite3` is committed, Render does not need the original CSV 
 
 Files intentionally included:
 
-- `server.py`
-- `import_csv.py`
+- `app/`
+- `scripts/import_csv.py`
 - `public/`
 - `data/cbam.sqlite3`
 - `render.yaml`

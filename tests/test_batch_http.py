@@ -1,17 +1,18 @@
 from __future__ import annotations
 
-import http.client
 import json
 import sqlite3
 import tempfile
-import threading
 import unittest
 from html.parser import HTMLParser
 from pathlib import Path
 from unittest.mock import patch
 
-import server
+from fastapi.testclient import TestClient
 
+from app import config
+from app import db as app_db
+from app.main import app
 
 XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
@@ -58,53 +59,21 @@ class BatchHttpTests(unittest.TestCase):
         )
         connection.commit()
         connection.close()
-        cls.original_db_path = server.DB_PATH
-        server.DB_PATH = cls.db_path
-        cls.httpd = server.ThreadingHTTPServer(("127.0.0.1", 0), server.AppHandler)
-        cls.port = cls.httpd.server_address[1]
-        cls.thread = threading.Thread(target=cls.httpd.serve_forever, daemon=True)
-        cls.thread.start()
+        cls.original_db_path = config.DB_PATH
+        config.DB_PATH = cls.db_path
+        cls.client = TestClient(app, raise_server_exceptions=False)
 
     @classmethod
     def tearDownClass(cls) -> None:
-        cls.httpd.shutdown()
-        cls.httpd.server_close()
-        cls.thread.join(timeout=3)
-        server.DB_PATH = cls.original_db_path
+        config.DB_PATH = cls.original_db_path
         cls.temp_dir.cleanup()
 
-    def request(
-        self,
-        method: str,
-        path: str,
-        body: bytes | None = None,
-        content_type: str | None = None,
-    ) -> tuple[int, dict[str, str], bytes]:
-        connection = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
-        headers = {}
-        if content_type:
-            headers["Content-Type"] = content_type
-        connection.request(method, path, body=body, headers=headers)
-        response = connection.getresponse()
-        response_body = response.read()
-        response_headers = {key: value for key, value in response.getheaders()}
-        connection.close()
-        return response.status, response_headers, response_body
-
-    def post_json(self, path: str, payload: dict) -> tuple[int, dict[str, str], bytes]:
-        return self.request(
-            "POST",
-            path,
-            json.dumps(payload).encode("utf-8"),
-            "application/json",
-        )
-
     def test_batch_page_first_response_includes_the_ready_status(self) -> None:
-        status, _headers, body = self.request("GET", "/batch.html")
+        response = self.client.get("/batch.html")
         parser = ElementTextParser("batch-status")
-        parser.feed(body.decode("utf-8"))
+        parser.feed(response.text)
 
-        self.assertEqual(status, 200)
+        self.assertEqual(response.status_code, 200)
         self.assertEqual(
             "".join(parser.text).strip(),
             "Ready for manual entry or an Excel upload.",
@@ -112,31 +81,33 @@ class BatchHttpTests(unittest.TestCase):
 
     def test_health_check_closes_its_database_connection(self) -> None:
         connections: list[sqlite3.Connection] = []
-        original_connect = server.connect
+        original_connect = app_db.open_readonly
 
-        def tracked_connect() -> sqlite3.Connection:
-            connection = original_connect()
+        def tracked_connect(db_path: Path | None = None) -> sqlite3.Connection:
+            connection = original_connect(db_path)
             connections.append(connection)
             return connection
 
-        with patch.object(server, "connect", side_effect=tracked_connect):
-            status, _body = server.get_health()
+        from app.api import health
 
-        self.assertEqual(status, 200)
+        with patch.object(app_db, "open_readonly", side_effect=tracked_connect):
+            response = health()
+
+        self.assertEqual(response.status_code, 200)
         self.assertEqual(len(connections), 1)
         with self.assertRaisesRegex(sqlite3.ProgrammingError, "closed"):
             connections[0].execute("SELECT 1")
 
     def test_batch_meta_and_report_contracts(self) -> None:
-        status, _headers, body = self.request("GET", "/api/batch-meta")
-        self.assertEqual(status, 200)
-        meta = json.loads(body)
+        response = self.client.get("/api/batch-meta")
+        self.assertEqual(response.status_code, 200)
+        meta = response.json()
         self.assertEqual(meta["codes"], ["76011010"])
         self.assertEqual(meta["countries"], ["Türkiye"])
 
-        status, _headers, body = self.post_json(
+        response = self.client.post(
             "/api/batch-report",
-            {
+            json={
                 "year": 2026,
                 "lines": [
                     {
@@ -149,78 +120,93 @@ class BatchHttpTests(unittest.TestCase):
                 ],
             },
         )
-        self.assertEqual(status, 200)
-        self.assertEqual(json.loads(body)["results"][0]["totalEmissions"], 28.64)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["results"][0]["totalEmissions"], 28.64)
 
     def test_template_and_export_are_downloadable_xlsx_files(self) -> None:
-        status, headers, body = self.request("GET", "/api/batch-template")
-        self.assertEqual(status, 200)
-        self.assertEqual(headers["Content-Type"], XLSX_MIME)
-        self.assertIn("CBAM_Batch_Input_Template.xlsx", headers["Content-Disposition"])
-        self.assertTrue(body.startswith(b"PK"))
+        response = self.client.get("/api/batch-template")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.headers["Content-Type"], XLSX_MIME)
+        self.assertIn("CBAM_Batch_Input_Template.xlsx", response.headers["Content-Disposition"])
+        self.assertTrue(response.content.startswith(b"PK"))
 
-        status, headers, body = self.post_json(
+        response = self.client.post(
             "/api/batch-export",
-            {
+            json={
                 "year": 2026,
-                "lines": [
-                    {"inputLine": 1, "cnCode": "76011010", "country": "Türkiye"}
-                ],
+                "lines": [{"inputLine": 1, "cnCode": "76011010", "country": "Türkiye"}],
             },
         )
-        self.assertEqual(status, 200)
-        self.assertEqual(headers["Content-Type"], XLSX_MIME)
-        self.assertIn("CBAM_Batch_Report_2026.xlsx", headers["Content-Disposition"])
-        self.assertTrue(body.startswith(b"PK"))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.headers["Content-Type"], XLSX_MIME)
+        self.assertIn("CBAM_Batch_Report_2026.xlsx", response.headers["Content-Disposition"])
+        self.assertTrue(response.content.startswith(b"PK"))
 
     def test_import_requires_xlsx_content_type_and_valid_workbook(self) -> None:
-        status, _headers, body = self.request(
-            "POST", "/api/batch-import", b"not-xlsx", "application/octet-stream"
+        response = self.client.post(
+            "/api/batch-import",
+            content=b"not-xlsx",
+            headers={"Content-Type": "application/octet-stream"},
         )
-        self.assertEqual(status, 400)
-        self.assertEqual(json.loads(body)["error"], "unsupported_workbook_type")
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["error"], "unsupported_workbook_type")
 
-        status, _headers, body = self.request(
-            "POST", "/api/batch-import", b"not-xlsx", XLSX_MIME
+        response = self.client.post(
+            "/api/batch-import",
+            content=b"not-xlsx",
+            headers={"Content-Type": XLSX_MIME},
         )
-        self.assertEqual(status, 400)
-        self.assertEqual(json.loads(body)["error"], "invalid_workbook")
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["error"], "invalid_workbook")
 
     def test_invalid_json_and_unsupported_year_have_precise_errors(self) -> None:
-        status, _headers, body = self.request(
-            "POST", "/api/batch-report", b"{", "application/json"
+        response = self.client.post(
+            "/api/batch-report",
+            content=b"{",
+            headers={"Content-Type": "application/json"},
         )
-        self.assertEqual(status, 400)
-        self.assertEqual(json.loads(body)["error"], "invalid_json")
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["error"], "invalid_json")
 
-        status, _headers, body = self.post_json(
-            "/api/batch-report", {"year": 2025, "lines": []}
-        )
-        self.assertEqual(status, 400)
-        self.assertEqual(json.loads(body)["error"], "unsupported_year")
+        response = self.client.post("/api/batch-report", json={"year": 2025, "lines": []})
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["error"], "unsupported_year")
 
     def test_json_payload_limit_is_checked_before_body_read(self) -> None:
-        connection = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
-        connection.putrequest("POST", "/api/batch-report")
-        connection.putheader("Content-Type", "application/json")
-        connection.putheader("Content-Length", str(10 * 1024 * 1024 + 1))
-        connection.endheaders()
-        response = connection.getresponse()
-        body = response.read()
-        connection.close()
-        self.assertEqual(response.status, 413)
-        self.assertEqual(json.loads(body)["error"], "payload_too_large")
+        response = self.client.post(
+            "/api/batch-report",
+            content=b"{}",
+            headers={
+                "Content-Type": "application/json",
+                "Content-Length": str(10 * 1024 * 1024 + 1),
+            },
+        )
+        self.assertEqual(response.status_code, 413)
+        self.assertEqual(response.json()["error"], "payload_too_large")
+
+    def test_unknown_api_path_returns_the_json_error_contract(self) -> None:
+        response = self.client.get("/api/does-not-exist")
+        self.assertEqual(response.status_code, 404)
+        payload = response.json()
+        self.assertEqual(payload["error"], "not_found")
+        self.assertIn("/api/does-not-exist", payload["message"])
+
+    def test_responses_are_never_cached(self) -> None:
+        for path in ("/", "/api/health", "/api/batch-meta"):
+            response = self.client.get(path)
+            self.assertEqual(response.headers["Cache-Control"], "no-store, max-age=0", path)
 
     def test_missing_emissions_table_returns_service_unavailable(self) -> None:
         empty_db = Path(self.temp_dir.name) / "empty.sqlite3"
         sqlite3.connect(empty_db).close()
-        server.DB_PATH = empty_db
+        original = config.DB_PATH
+        config.DB_PATH = empty_db
         try:
-            status, _headers, body = self.request("GET", "/api/batch-meta")
+            response = self.client.get("/api/batch-meta")
         finally:
-            server.DB_PATH = self.db_path
-        self.assertEqual(status, 503)
-        self.assertEqual(json.loads(body)["error"], "source_rows_unavailable")
+            config.DB_PATH = original
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.json()["error"], "source_rows_unavailable")
 
 
 if __name__ == "__main__":

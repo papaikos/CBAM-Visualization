@@ -7,7 +7,7 @@ from collections import defaultdict
 from pathlib import Path
 
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parents[1]
 CSV_PATH = ROOT / "output_country_specific.csv"
 DATA_DIR = ROOT / "data"
 DB_PATH = DATA_DIR / "cbam.sqlite3"

@@ -6,7 +6,7 @@ from io import BytesIO
 
 from openpyxl import Workbook, load_workbook
 
-from batch_excel import (
+from app.services.excel import (
     MAX_UNCOMPRESSED_BYTES,
     MAX_WORKBOOK_BYTES,
     WorkbookFormatError,
@@ -17,7 +17,7 @@ from batch_excel import (
     safe_excel_text,
     validate_xlsx_archive,
 )
-from batch_report import AGGREGATED_DUPLICATE_WARNING
+from app.services.batch import AGGREGATED_DUPLICATE_WARNING
 
 
 def workbook_bytes(headers: list[str], rows: list[list[object]], sheet_name: str = "Input") -> bytes:

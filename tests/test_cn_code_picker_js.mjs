@@ -1,11 +1,11 @@
-const assert = require("node:assert/strict");
-const test = require("node:test");
+import assert from "node:assert/strict";
+import test from "node:test";
 
-const {
+import {
   commitSelectedCode,
   moveActiveIndex,
   openFullCodeMenu,
-} = require("../public/cn-code-picker.js");
+} from "../public/js/map/cn-code-picker.js";
 
 test("selecting a code commits the change and releases input focus", () => {
   const dispatchedEvents = [];

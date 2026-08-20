@@ -1,11 +1,11 @@
-const assert = require("node:assert/strict");
-const test = require("node:test");
+import assert from "node:assert/strict";
+import test from "node:test";
 
-const {
+import {
   commitCountrySearchOnEnter,
   commitFieldOnEnter,
   formatCommittedPrice,
-} = require("../public/toolbar-interactions.js");
+} from "../public/js/map/toolbar.js";
 
 test("Enter accepts the suggested country name and releases the search field", () => {
   const dispatchedEvents = [];
