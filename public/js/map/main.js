@@ -142,8 +142,8 @@ function initializeMap() {
     maxBoundsViscosity: 1,
   });
 
-  L.tileLayer("https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png", {
-    attribution: '&copy; <a href="https://carto.com/">CARTO</a> | By Athanasios Papazikos',
+  L.tileLayer("https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png?key=cb1_3061_1_ce706d68d7c37fb4e7727576", {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a> | By Athanasios Papazikos',
     bounds: WORLD_BOUNDS,
     keepBuffer: 8,
     noWrap: true,
