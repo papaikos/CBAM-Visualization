@@ -290,8 +290,9 @@ function renderReport(report) {
     route.textContent = item.productionRouteLabel;
     routeCell.append(route);
     row.append(routeCell);
-    resultCell(row, `${formatNumber(item.weightTonnes, 4)} t`);
-    resultCell(row, `${Number(item.emissionsPerTonne).toFixed(4)} tCO₂/t`);
+    const unit = item.quantityUnit === "MWh" ? "MWh" : "t";
+    resultCell(row, `${formatNumber(item.weightTonnes, 4)} ${unit}`);
+    resultCell(row, `${Number(item.emissionsPerTonne).toFixed(4)} tCO₂/${unit}`);
     resultCell(row, formatEmissions(item.totalEmissions));
     resultCell(row, formatMoney(item.co2Price));
     resultCell(row, formatMoney(item.costPerTonne));

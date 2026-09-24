@@ -537,6 +537,11 @@ input {
   text-transform: uppercase;
 }
 
+#legend-unit {
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+
 .search-input-shell {
   position: relative;
 }

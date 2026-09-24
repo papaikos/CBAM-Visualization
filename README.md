@@ -21,8 +21,13 @@ public/                 Static frontend (no build step)
   js/lib/               Shared fetch/download helpers
   js/map/               Map Explorer page modules
   js/batch/             Batch Report page modules
-scripts/import_csv.py   Regenerates data/cbam.sqlite3 from the source CSV
+  countries.topojson    Country borders (+ .gz copy served pre-compressed)
+  vendor/               topojson-client (ISC licence)
+scripts/import_csv.py   Regenerates data/cbam.sqlite3 from the source CSV + electricity file
+scripts/build_map_assets.py  Regenerates public/countries.topojson from the source GeoJSON
 data/cbam.sqlite3       Bundled runtime database (read-only at runtime)
+data/electricity_27160000.json  Electricity (CN 2716 00 00) default values
+data/source/countries.geojson   Natural Earth 1:10m borders (source for the map geometry)
 tests/                  Python unittest suite and Node test files
 ```
 
@@ -38,6 +43,7 @@ It is not an official CBAM system, regulatory reporting platform, or compliance 
 
 - Interactive world map with country-level CBAM values
 - CN code selector covering all available codes in the bundled database
+- Electricity (CN `27160000`) with values in tCO2/MWh and costs in EUR/MWh
 - Year selector for `2026` and `2027`
 - Country search with instant value previews
 - Country detail panel with displayed map value and available production routes
@@ -74,6 +80,22 @@ or with explicit paths:
 ```bash
 python scripts/import_csv.py --csv /path/to/output_country_specific.csv --db data/cbam.sqlite3
 ```
+
+### Electricity (CN 2716 00 00)
+
+Electricity is not part of the country-specific CSV. Its default emission factors (tCO2/MWh) live in `data/electricity_27160000.json` and are added by `scripts/import_csv.py` on every rebuild, so they survive a regeneration from the CSV. To refresh only the electricity records in the committed database (no CSV needed):
+
+```bash
+python scripts/import_csv.py --electricity-only
+```
+
+The file is expanded to one record per country already in the database, for both years:
+
+- countries with a country-specific default use it (e.g. Bosnia and Herzegovina 1.148, Serbia 1.041, Kosovo 0.984, Albania 0.000);
+- EU member states, Norway, Iceland, Liechtenstein, Switzerland, and the territories stored as zero for every other code are stored as zero;
+- every other country uses the EU fallback factor of 0.612 tCO2/MWh.
+
+The same values are used for 2026 and 2027. Electricity values are per MWh, so the map, tooltip, detail card, and batch results show `tCO2/MWh` and `EUR/MWh` for this code; in the Batch Report the weight column holds MWh for electricity lines.
 
 ### Batch data mode
 
@@ -143,7 +165,17 @@ Country values are selected as follows:
 - If a country has multiple route values and no unspecified route, the map uses their average.
 - The country detail panel still lists the available production routes.
 
-Some map territories are handled with explicit display rules so the visualization remains consistent with the intended dataset interpretation.
+Some map territories are handled with explicit display rules so the visualization remains consistent with the intended dataset interpretation. Kosovo normally mirrors Serbia, but keeps its own value for electricity, which has a Kosovo-specific default.
+
+### Map geometry
+
+The map draws `public/countries.topojson`, built from the Natural Earth 1:10m borders in `data/source/countries.geojson` by:
+
+```bash
+python scripts/build_map_assets.py   # needs Node.js; runs mapshaper via npx
+```
+
+Shared borders are stored once and a topology-preserving simplification removes vertices closer than 400 m to the line. At the map's maximum zoom (6) that is below one screen pixel, so the rendered map is visually the same as the full-resolution file (in side-by-side renders less than 0.2% of pixels differ, all on anti-aliased edges) while the download drops from 14.6 MB to 0.9 MB gzipped.
 
 ## Technology
 
@@ -188,6 +220,8 @@ http://127.0.0.1:8000
 - `/api/meta`
 - `/api/map-data?cn_code=76011000&year=2026`
 - `/api/country?cn_code=76011000&year=2026&country=Greece`
+
+Map responses include `unit` (`"ton"`, or `"MWh"` for electricity); `/api/meta` lists the non-tonne codes in `units`.
 - `GET /api/batch-meta`
 - `POST /api/batch-import`
 - `POST /api/batch-report`
@@ -204,7 +238,7 @@ python -m unittest discover -s tests -t .
 node --test tests/*.mjs
 ```
 
-The Python suite covers the service layer, the HTTP contract (status codes, error codes, headers, downloads), and static page/CSS contracts, including a hash check that guards the bundled emissions data against accidental modification. The Node suite unit-tests the frontend's pure logic modules.
+The Python suite covers the service layer, the HTTP contract (status codes, error codes, headers, downloads), and static page/CSS contracts, including a hash check that guards the bundled emissions data against accidental modification (the electricity records are checked against `data/electricity_27160000.json` instead). The Node suite unit-tests the frontend's pure logic modules.
 
 ## Deployment On Render
 
@@ -228,14 +262,25 @@ Health check path: /api/health
 
 Because `data/cbam.sqlite3` is committed, Render does not need the original CSV file.
 
+The server is tuned for the free tier's small CPU and bandwidth:
+
+- read-only API results are cached in memory per database file, so repeated map, country, and batch-meta requests skip SQLite and JSON encoding;
+- the country geometry is served from a pre-compressed `.gz` copy (no per-request compression work), and other text responses over 1 KiB are gzipped;
+- static files are revalidated with ETags (`Cache-Control: no-cache`), so returning visitors get `304 Not Modified` instead of re-downloading; API responses stay `no-store`.
+
+A free Render service still sleeps after about 15 minutes without traffic, and the first request after that waits for it to start.
+
 ## Repository Notes
 
 Files intentionally included:
 
 - `app/`
 - `scripts/import_csv.py`
+- `scripts/build_map_assets.py`
 - `public/`
 - `data/cbam.sqlite3`
+- `data/electricity_27160000.json`
+- `data/source/countries.geojson`
 - `render.yaml`
 - `requirements.txt`
 

@@ -28,5 +28,18 @@ MIRRORED_COUNTRIES: dict[str, str] = {
 # Mirrored territories that must not disclose their source country.
 SILENT_MIRRORED_COUNTRIES = frozenset({"Northern Cyprus"})
 
+# Electrical energy: values are tCO2 per MWh instead of per tonne.
+ELECTRICITY_CN_CODE = "27160000"
+
+# Quantity unit per CN code; every code not listed here is measured in tonnes.
+DEFAULT_QUANTITY_UNIT = "ton"
+QUANTITY_UNITS: dict[str, str] = {ELECTRICITY_CN_CODE: "MWh"}
+
+# Mirrored territories that keep their own records for specific CN codes
+# (electricity has a Kosovo-specific default value).
+UNMIRRORED_COUNTRIES_BY_CODE: dict[str, frozenset[str]] = {
+    ELECTRICITY_CN_CODE: frozenset({"Kosovo"}),
+}
+
 MAX_JSON_BYTES = 10 * 1024 * 1024
 XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"

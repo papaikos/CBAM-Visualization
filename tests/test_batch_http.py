@@ -191,10 +191,45 @@ class BatchHttpTests(unittest.TestCase):
         self.assertEqual(payload["error"], "not_found")
         self.assertIn("/api/does-not-exist", payload["message"])
 
-    def test_responses_are_never_cached(self) -> None:
-        for path in ("/", "/api/health", "/api/batch-meta"):
+    def test_api_responses_are_never_cached(self) -> None:
+        for path in ("/api/health", "/api/batch-meta", "/api/does-not-exist"):
             response = self.client.get(path)
             self.assertEqual(response.headers["Cache-Control"], "no-store, max-age=0", path)
+
+    def test_static_files_are_always_revalidated(self) -> None:
+        for path in ("/", "/batch.html", "/js/map/main.js", "/cbam-brand.png"):
+            response = self.client.get(path)
+            self.assertEqual(response.status_code, 200, path)
+            self.assertEqual(response.headers["Cache-Control"], "no-cache", path)
+            revalidated = self.client.get(path, headers={"If-None-Match": response.headers["ETag"]})
+            self.assertEqual(revalidated.status_code, 304, path)
+            self.assertEqual(revalidated.content, b"", path)
+
+    def test_map_geometry_is_served_precompressed(self) -> None:
+        raw = (config.PUBLIC_DIR / "countries.topojson").read_bytes()
+        compressed = (config.PUBLIC_DIR / "countries.topojson.gz").read_bytes()
+
+        response = self.client.get("/countries.topojson", headers={"Accept-Encoding": "gzip"})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.headers["Content-Encoding"], "gzip")
+        self.assertEqual(response.headers["Content-Length"], str(len(compressed)))
+        self.assertEqual(response.headers["Content-Type"], "application/json")
+        self.assertEqual(response.headers["Vary"], "Accept-Encoding")
+        self.assertEqual(response.content, raw)
+
+        revalidated = self.client.get(
+            "/countries.topojson",
+            headers={"Accept-Encoding": "gzip", "If-None-Match": response.headers["ETag"]},
+        )
+        self.assertEqual(revalidated.status_code, 304)
+
+        plain = self.client.get("/countries.topojson", headers={"Accept-Encoding": "identity"})
+        self.assertNotIn("Content-Encoding", plain.headers)
+        self.assertEqual(plain.content, raw)
+
+    def test_images_are_not_gzipped_again(self) -> None:
+        response = self.client.get("/cbam-brand.png", headers={"Accept-Encoding": "gzip"})
+        self.assertNotIn("Content-Encoding", response.headers)
 
     def test_missing_emissions_table_returns_service_unavailable(self) -> None:
         empty_db = Path(self.temp_dir.name) / "empty.sqlite3"

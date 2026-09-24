@@ -16,13 +16,15 @@ const WORLD_BOUNDS = [
   [85, 180],
 ];
 
+const GEOMETRY_URL = "/countries.topojson";
+const DEFAULT_UNIT = "ton";
+
 const state = {
   meta: null,
   map: null,
   geojson: null,
   geojsonLayer: null,
   countryRenderer: null,
-  featureLayers: new Map(),
   hoveredLayer: null,
   selectedCode: "",
   selectedYear: 2026,
@@ -49,6 +51,7 @@ const elements = {
   countrySearchResults: document.getElementById("country-search-results"),
   legendMin: document.getElementById("legend-min"),
   legendMax: document.getElementById("legend-max"),
+  legendUnit: document.getElementById("legend-unit"),
   hoverTooltip: document.getElementById("hover-tooltip"),
   disclaimerOpen: document.getElementById("disclaimer-open"),
   disclaimerDialog: document.getElementById("disclaimer-dialog"),
@@ -57,11 +60,16 @@ const elements = {
 
 /* ---------- formatting ---------- */
 
+/** Quantity unit of the selected CN code: "ton" for goods, "MWh" for electricity. */
+function currentUnit() {
+  return state.mapData?.unit || DEFAULT_UNIT;
+}
+
 function formatEmissions(value) {
   if (value === null || value === undefined) {
     return "No data";
   }
-  return `${Number(value).toFixed(2)} tCO2/ton`;
+  return `${Number(value).toFixed(2)} tCO2/${currentUnit()}`;
 }
 
 function formatCurrency(value) {
@@ -72,7 +80,7 @@ function formatCurrency(value) {
   if (Number.isNaN(co2Price)) {
     return null;
   }
-  return `${(Number(value) * co2Price).toFixed(2)} EUR/ton`;
+  return `${(Number(value) * co2Price).toFixed(2)} EUR/${currentUnit()}`;
 }
 
 /* ---------- map data lookups ---------- */
@@ -100,7 +108,7 @@ function resolveApiCountryName(country) {
 }
 
 function countryHasAnyData(country) {
-  return state.mapData?.countriesCanonical?.includes(getDataLookupCanonical(country)) || false;
+  return state.mapData?.countriesCanonical?.has(getDataLookupCanonical(country)) || false;
 }
 
 /* ---------- map setup ---------- */
@@ -164,12 +172,22 @@ function getFeatureName(feature) {
   return feature?.properties?.ADMIN || feature?.properties?.name || "";
 }
 
+/** Country-name normalization is done once per feature, not on every restyle. */
+const featureLookupKeys = new WeakMap();
+
+function getFeatureLookupKey(feature) {
+  let key = featureLookupKeys.get(feature);
+  if (key === undefined) {
+    key = getDataLookupCanonical(getFeatureName(feature));
+    featureLookupKeys.set(feature, key);
+  }
+  return key;
+}
+
 function getFeatureStyle(feature) {
-  const country = getFeatureName(feature);
-  const canonical = canonicalCountryName(country);
-  const color = valueColor(getMapValue(country));
-  const isHovered =
-    state.hoveredCountry && canonicalCountryName(state.hoveredCountry) === canonical;
+  const entry = state.mapData?.mapValuesByCanonical?.[getFeatureLookupKey(feature)];
+  const color = valueColor(entry?.paidEmissions ?? null);
+  const isHovered = state.hoveredLayer?.feature === feature;
 
   return {
     className: "country-path",
@@ -209,14 +227,14 @@ function buildGeoJsonLayer() {
     smoothFactor: 0.8,
     style: (feature) => getFeatureStyle(feature),
     onEachFeature: (feature, layer) => {
-      state.featureLayers.set(canonicalCountryName(getFeatureName(feature)), layer);
       layer.on({
         mouseover: (event) => {
-          if (state.hoveredLayer && state.hoveredLayer !== event.target) {
-            applyLayerStyle(state.hoveredLayer);
-          }
+          const previousLayer = state.hoveredLayer;
           state.hoveredCountry = getFeatureName(event.target.feature);
           state.hoveredLayer = event.target;
+          if (previousLayer && previousLayer !== event.target) {
+            applyLayerStyle(previousLayer);
+          }
           state.mouse = {
             x: event.originalEvent.clientX,
             y: event.originalEvent.clientY,
@@ -237,7 +255,7 @@ function buildGeoJsonLayer() {
             x: event.originalEvent.clientX,
             y: event.originalEvent.clientY,
           };
-          queueTooltipRender();
+          queueTooltipMove();
         },
         click: async (event) => {
           stopMapClick(event);
@@ -266,7 +284,7 @@ async function refreshMapData() {
       { ...item, paidEmissions: Number(item.paidEmissions) },
     ]),
   );
-  state.mapData.countriesCanonical = state.mapData.countries.map(canonicalCountryName);
+  state.mapData.countriesCanonical = new Set(state.mapData.countries.map(canonicalCountryName));
   state.mapData.countryNameByCanonical = Object.fromEntries(
     state.mapData.countries.map((country) => [canonicalCountryName(country), country]),
   );
@@ -292,6 +310,9 @@ function updateLegend() {
   }
   if (elements.legendMax) {
     elements.legendMax.textContent = Number(state.mapData.maxValue || 0).toFixed(2);
+  }
+  if (elements.legendUnit) {
+    elements.legendUnit.textContent = `tCO2/${currentUnit()}`;
   }
 }
 
@@ -383,15 +404,21 @@ function renderCountrySearchResults() {
 
 /* ---------- tooltip ---------- */
 
-function queueTooltipRender() {
+/** Mouse moves only reposition the tooltip; its content changes on hover or price changes. */
+function queueTooltipMove() {
   if (state.tooltipRenderQueued) {
     return;
   }
   state.tooltipRenderQueued = true;
   window.requestAnimationFrame(() => {
     state.tooltipRenderQueued = false;
-    renderTooltip();
+    positionTooltip();
   });
+}
+
+function positionTooltip() {
+  elements.hoverTooltip.style.left = `${state.mouse.x + 16}px`;
+  elements.hoverTooltip.style.top = `${state.mouse.y - 18}px`;
 }
 
 function tooltipRow(...children) {
@@ -440,13 +467,12 @@ function renderTooltip() {
 
   elements.hoverTooltip.replaceChildren(...children);
   elements.hoverTooltip.classList.remove("hidden");
-  elements.hoverTooltip.style.left = `${state.mouse.x + 16}px`;
-  elements.hoverTooltip.style.top = `${state.mouse.y - 18}px`;
+  positionTooltip();
 }
 
 /* ---------- country detail card ---------- */
 
-function detailRouteRow(route) {
+function detailRouteRow(route, quantityUnit) {
   const row = document.createElement("div");
   row.className = "route-row";
 
@@ -464,14 +490,16 @@ function detailRouteRow(route) {
 
   const description = document.createElement("div");
   description.className = "route-description";
-  description.textContent = getRouteExplanation(route.value) || "No description available";
+  description.textContent =
+    getRouteExplanation(route.value) ||
+    (quantityUnit === "MWh" ? "Default CO2 emission factor of electricity" : "No description available");
 
   const metric = document.createElement("div");
   metric.className = "route-metric";
   const value = document.createElement("strong");
   value.textContent = Number(route.paidEmissions).toFixed(2);
   const unit = document.createElement("span");
-  unit.textContent = "tCO2/ton";
+  unit.textContent = `tCO2/${quantityUnit}`;
   metric.append(value, unit);
 
   row.append(name, description, metric);
@@ -518,7 +546,7 @@ function renderCountryDetail() {
   const metaValue = document.createElement("strong");
   metaValue.textContent = heroValue === null ? "No data" : Number(heroValue).toFixed(2);
   const metaCaption = document.createElement("p");
-  metaCaption.textContent = "tCO2/ton shown on the map for this country";
+  metaCaption.textContent = `tCO2/${detail.unit || DEFAULT_UNIT} shown on the map for this country`;
   meta.append(metaValue, metaCaption);
   if (mapCost) {
     const metaCost = document.createElement("p");
@@ -543,9 +571,9 @@ function renderCountryDetail() {
 
   const routesTable = document.createElement("div");
   routesTable.className = "routes-table";
-  routesTable.append(...detail.routes.map(detailRouteRow));
+  routesTable.append(...detail.routes.map((route) => detailRouteRow(route, detail.unit || DEFAULT_UNIT)));
 
-  body.append(summary, note, routesTable);
+  body.append(summary, ...(note.childNodes.length ? [note] : []), routesTable);
   elements.detailCard.replaceChildren(header, body);
   elements.detailCard.classList.remove("hidden");
 }
@@ -658,15 +686,21 @@ function bindEvents() {
 
 /* ---------- bootstrap ---------- */
 
+async function loadCountryGeometry() {
+  const response = await fetch(GEOMETRY_URL);
+  if (!response.ok) {
+    throw new Error(`Map geometry request failed: ${response.status}`);
+  }
+  const topology = await response.json();
+  return topojson.feature(topology, topology.objects.countries);
+}
+
 async function init() {
   renderYearButtons();
   bindEvents();
   initializeMap();
 
-  const [meta, geojson] = await Promise.all([
-    fetchJson("/api/meta"),
-    fetch("/countries.geojson").then((response) => response.json()),
-  ]);
+  const [meta, geojson] = await Promise.all([fetchJson("/api/meta"), loadCountryGeometry()]);
 
   state.meta = meta;
   state.geojson = geojson;
@@ -682,14 +716,14 @@ async function init() {
 initCnCodePicker();
 initToolbarInteractions();
 
-window.addEventListener("load", () => {
-  init().catch((error) => {
-    console.error(error);
-    if (elements.legendMin) {
-      elements.legendMin.textContent = "!";
-    }
-    if (elements.legendMax) {
-      elements.legendMax.textContent = "!";
-    }
-  });
+// Module scripts run after the document is parsed, so start right away instead of
+// waiting for the window "load" event (which also waits for images and tiles).
+init().catch((error) => {
+  console.error(error);
+  if (elements.legendMin) {
+    elements.legendMin.textContent = "!";
+  }
+  if (elements.legendMax) {
+    elements.legendMax.textContent = "!";
+  }
 });

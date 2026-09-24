@@ -9,11 +9,14 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from functools import lru_cache
+from typing import Any, Callable
 
 from fastapi import APIRouter, Request, Response
 from fastapi.responses import JSONResponse
 
 from app import config
+from app import db
 from app.db import connection, database_exists
 from app.errors import (
     AppError,
@@ -111,6 +114,36 @@ async def _read_json_payload(request: Request) -> dict:
         raise InvalidJson("The request body is not valid JSON.") from exc
 
 
+def _encode_json(payload: Any) -> bytes:
+    return json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+
+
+# Read-only queries whose results depend only on their arguments and the database file.
+_CACHEABLE_QUERIES: dict[str, Callable[..., Any]] = {
+    "meta": lambda: emissions.get_meta(),
+    "map-data": lambda cn_code, year: emissions.get_map_data(cn_code, year),
+    "country": lambda cn_code, year, country: emissions.get_country_detail(cn_code, year, country),
+    "batch-meta": lambda: batch.get_batch_meta(),
+    "batch-template": lambda: build_input_template(batch.get_batch_meta()),
+}
+
+
+@lru_cache(maxsize=1024)
+def _cached_result(fingerprint: tuple, query: str, args: tuple) -> Any:
+    """Memoize a query per database fingerprint; errors are raised, never cached."""
+    result = _CACHEABLE_QUERIES[query](*args)
+    return result if isinstance(result, bytes) else _encode_json(result)
+
+
+def _cached(query: str, *args: Any) -> bytes:
+    _require_database()
+    return _cached_result(db.fingerprint(), query, args)
+
+
+def _cached_json_response(query: str, *args: Any) -> Response:
+    return Response(content=_cached(query, *args), media_type="application/json")
+
+
 def _xlsx_response(workbook: bytes, filename: str) -> Response:
     return Response(
         content=workbook,
@@ -142,39 +175,33 @@ def health() -> JSONResponse:
 
 
 @router.get("/meta")
-def meta() -> dict:
-    _require_database()
-    return emissions.get_meta()
+def meta() -> Response:
+    return _cached_json_response("meta")
 
 
 @router.get("/map-data")
-def map_data(request: Request) -> dict:
-    _require_database()
+def map_data(request: Request) -> Response:
     cn_code = _require_query(request, "cn_code")
     year = _require_year(request)
-    return emissions.get_map_data(cn_code, year)
+    return _cached_json_response("map-data", cn_code, year)
 
 
 @router.get("/country")
-def country_detail(request: Request) -> dict:
-    _require_database()
+def country_detail(request: Request) -> Response:
     cn_code = _require_query(request, "cn_code")
     year = _require_year(request)
     country = _require_query(request, "country")
-    return emissions.get_country_detail(cn_code, year, country)
+    return _cached_json_response("country", cn_code, year, country)
 
 
 @router.get("/batch-meta")
-def batch_meta() -> dict:
-    _require_database()
-    return batch.get_batch_meta()
+def batch_meta() -> Response:
+    return _cached_json_response("batch-meta")
 
 
 @router.get("/batch-template")
 def batch_template() -> Response:
-    _require_database()
-    workbook = build_input_template(batch.get_batch_meta())
-    return _xlsx_response(workbook, "CBAM_Batch_Input_Template.xlsx")
+    return _xlsx_response(_cached("batch-template"), "CBAM_Batch_Input_Template.xlsx")
 
 
 @router.post("/batch-import")

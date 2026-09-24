@@ -1,7 +1,16 @@
+"""Build data/cbam.sqlite3 from the source CSV plus the bundled electricity values.
+
+Usage:
+
+    python scripts/import_csv.py                    # full rebuild from the CSV
+    python scripts/import_csv.py --electricity-only # refresh CN 27160000 in the existing DB
+"""
+
 from __future__ import annotations
 
 import argparse
 import csv
+import json
 import sqlite3
 from collections import defaultdict
 from pathlib import Path
@@ -11,6 +20,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CSV_PATH = ROOT / "output_country_specific.csv"
 DATA_DIR = ROOT / "data"
 DB_PATH = DATA_DIR / "cbam.sqlite3"
+ELECTRICITY_PATH = DATA_DIR / "electricity_27160000.json"
 VALID_YEARS = {2026, 2027}
 
 
@@ -32,29 +42,8 @@ CREATE TABLE emissions (
     PRIMARY KEY (cn_code, country, year, production_route)
 );
 
-CREATE TABLE code_year_route_counts (
-    cn_code TEXT NOT NULL,
-    year INTEGER NOT NULL,
-    production_route TEXT NOT NULL,
-    country_count INTEGER NOT NULL,
-    PRIMARY KEY (cn_code, year, production_route)
-);
-
-CREATE TABLE code_year_summary (
-    cn_code TEXT NOT NULL,
-    year INTEGER NOT NULL,
-    majority_route TEXT NOT NULL,
-    majority_country_count INTEGER NOT NULL,
-    total_country_count INTEGER NOT NULL,
-    map_country_count INTEGER NOT NULL,
-    max_map_value REAL NOT NULL,
-    PRIMARY KEY (cn_code, year)
-);
-
-CREATE INDEX idx_emissions_code_year ON emissions (cn_code, year);
 CREATE INDEX idx_emissions_country ON emissions (country);
 CREATE INDEX idx_emissions_code_year_country ON emissions (cn_code, year, country);
-CREATE INDEX idx_route_counts_code_year ON code_year_route_counts (cn_code, year, country_count DESC);
 """
 
 
@@ -75,6 +64,16 @@ def parse_args() -> argparse.Namespace:
         "--db",
         default=str(DB_PATH),
         help="Path to the SQLite database file to create.",
+    )
+    parser.add_argument(
+        "--electricity",
+        default=str(ELECTRICITY_PATH),
+        help="Path to the electricity (CN 27160000) default-value file.",
+    )
+    parser.add_argument(
+        "--electricity-only",
+        action="store_true",
+        help="Only refresh the electricity records in an existing database (no CSV needed).",
     )
     return parser.parse_args()
 
@@ -108,61 +107,67 @@ def load_grouped_rows(csv_path: Path) -> dict[tuple[str, str, int, str], tuple[f
     return grouped_rows
 
 
-def compute_route_counts(
-    grouped_rows: dict[tuple[str, str, int, str], tuple[float, int]]
-) -> list[tuple[str, int, str, int]]:
-    route_counts: dict[tuple[str, int, str], int] = defaultdict(int)
-    for cn_code, _country, year, route in grouped_rows:
-        route_counts[(cn_code, year, route)] += 1
+def electricity_rows(countries: list[str], spec: dict) -> list[tuple[str, str, int, str, float, int]]:
+    """Expand the electricity defaults to one record per country and year.
 
-    return [
-        (cn_code, year, route, country_count)
-        for (cn_code, year, route), country_count in route_counts.items()
-    ]
+    Countries with a specific default use it, zero countries (EU/EEA/Swiss ETS
+    and territories that are zero for every other code) are stored as zero, and
+    every other country uses the EU fallback emission factor.
+    """
+    specific = spec["specificValues"]
+    zero = set(spec["zeroCountries"])
+    unknown = sorted((set(specific) | zero).difference(countries))
+    if unknown:
+        raise ValueError(f"Electricity countries missing from the database: {', '.join(unknown)}")
+
+    rows = []
+    for country in countries:
+        if country in specific:
+            value = float(specific[country])
+        elif country in zero:
+            value = 0.0
+        else:
+            value = float(spec["fallbackValue"])
+        for year in spec["years"]:
+            rows.append((spec["cnCode"], country, int(year), "", value, 1))
+    return rows
 
 
-def compute_summaries(
-    grouped_rows: dict[tuple[str, str, int, str], tuple[float, int]],
-    route_counts: list[tuple[str, int, str, int]],
-) -> list[tuple[str, int, str, int, int, int, float]]:
-    route_counts_by_code_year: dict[tuple[str, int], list[tuple[str, int]]] = defaultdict(list)
-    all_countries_by_code_year: dict[tuple[str, int], set[str]] = defaultdict(set)
-    map_rows_by_code_year_route: dict[tuple[str, int, str], list[float]] = defaultdict(list)
-
-    for cn_code, year, route, country_count in route_counts:
-        route_counts_by_code_year[(cn_code, year)].append((route, country_count))
-
-    for (cn_code, country, year, route), (paid_emissions, _duplicate_count) in grouped_rows.items():
-        all_countries_by_code_year[(cn_code, year)].add(country)
-        map_rows_by_code_year_route[(cn_code, year, route)].append(paid_emissions)
-
-    summaries: list[tuple[str, int, str, int, int, int, float]] = []
-    for code_year, routes in route_counts_by_code_year.items():
-        cn_code, year = code_year
-        majority_route, majority_country_count = sorted(
-            routes, key=lambda item: (-item[1], item[0])
-        )[0]
-        map_values = map_rows_by_code_year_route[(cn_code, year, majority_route)]
-        summaries.append(
-            (
-                cn_code,
-                year,
-                majority_route,
-                majority_country_count,
-                len(all_countries_by_code_year[(cn_code, year)]),
-                len(map_values),
-                max(map_values) if map_values else 0.0,
-            )
+def import_electricity(connection: sqlite3.Connection, spec_path: Path) -> int:
+    """Replace the electricity records using the countries already in the database."""
+    spec = json.loads(spec_path.read_text(encoding="utf-8"))
+    cn_code = spec["cnCode"]
+    countries = [
+        row[0]
+        for row in connection.execute(
+            "SELECT DISTINCT country FROM emissions WHERE cn_code <> ? ORDER BY country",
+            (cn_code,),
         )
+    ]
+    rows = electricity_rows(countries, spec)
+    connection.execute("DELETE FROM emissions WHERE cn_code = ?", (cn_code,))
+    connection.executemany(
+        """
+        INSERT INTO emissions (
+            cn_code, country, year, production_route, paid_emissions, duplicate_count
+        )
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        rows,
+    )
+    return len(rows)
 
-    return summaries
+
+def finalize(connection: sqlite3.Connection) -> None:
+    """Leave a single self-contained file that opens read-only without sidecars."""
+    connection.commit()
+    connection.execute("PRAGMA journal_mode = DELETE")
+    connection.execute("VACUUM")
 
 
-def import_to_sqlite(csv_path: Path, db_path: Path) -> None:
+def import_to_sqlite(csv_path: Path, db_path: Path, electricity_path: Path) -> None:
     db_path.parent.mkdir(parents=True, exist_ok=True)
     grouped_rows = load_grouped_rows(csv_path)
-    route_counts = compute_route_counts(grouped_rows)
-    summaries = compute_summaries(grouped_rows, route_counts)
 
     connection = sqlite3.connect(db_path)
     try:
@@ -186,49 +191,51 @@ def import_to_sqlite(csv_path: Path, db_path: Path) -> None:
                 for (cn_code, country, year, route), (paid_emissions, duplicate_count) in grouped_rows.items()
             ],
         )
-        connection.executemany(
-            """
-            INSERT INTO code_year_route_counts (
-                cn_code, year, production_route, country_count
-            )
-            VALUES (?, ?, ?, ?)
-            """,
-            route_counts,
-        )
-        connection.executemany(
-            """
-            INSERT INTO code_year_summary (
-                cn_code,
-                year,
-                majority_route,
-                majority_country_count,
-                total_country_count,
-                map_country_count,
-                max_map_value
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-            summaries,
-        )
-        connection.commit()
+        electricity_count = import_electricity(connection, electricity_path)
+        finalize(connection)
     finally:
         connection.close()
 
     print(
         f"Imported {len(grouped_rows):,} unique code/country/year/route rows "
-        f"into {db_path} from {csv_path}."
+        f"and {electricity_count:,} electricity rows into {db_path} from {csv_path}."
     )
+
+
+def refresh_electricity(db_path: Path, electricity_path: Path) -> None:
+    if not db_path.exists():
+        raise FileNotFoundError(f"Database file not found: {db_path}")
+    connection = sqlite3.connect(db_path)
+    try:
+        # Legacy summary tables and the (cn_code, year) index are unused by the app.
+        connection.executescript(
+            """
+            DROP TABLE IF EXISTS code_year_route_counts;
+            DROP TABLE IF EXISTS code_year_summary;
+            DROP INDEX IF EXISTS idx_emissions_code_year;
+            """
+        )
+        electricity_count = import_electricity(connection, electricity_path)
+        finalize(connection)
+    finally:
+        connection.close()
+    print(f"Refreshed {electricity_count:,} electricity rows in {db_path}.")
 
 
 def main() -> None:
     args = parse_args()
-    csv_path = Path(args.csv).resolve()
     db_path = Path(args.db).resolve()
+    electricity_path = Path(args.electricity).resolve()
 
+    if args.electricity_only:
+        refresh_electricity(db_path, electricity_path)
+        return
+
+    csv_path = Path(args.csv).resolve()
     if not csv_path.exists():
         raise FileNotFoundError(f"CSV file not found: {csv_path}")
 
-    import_to_sqlite(csv_path, db_path)
+    import_to_sqlite(csv_path, db_path, electricity_path)
 
 
 if __name__ == "__main__":

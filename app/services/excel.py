@@ -16,9 +16,15 @@ from openpyxl.workbook.defined_name import DefinedName
 from openpyxl.worksheet.datavalidation import DataValidation
 from openpyxl.worksheet.properties import PageSetupProperties
 
+from app.config import ELECTRICITY_CN_CODE
 from app.errors import WorkbookFormatError, WorkbookTooLarge
 from app.services.batch import AGGREGATED_DUPLICATE_WARNING
 
+
+ELECTRICITY_UNIT_NOTE = (
+    f"Electricity (CN {ELECTRICITY_CN_CODE}) is measured per MWh: enter MWh in the weight "
+    "column; its emission and cost values are per MWh instead of per tonne."
+)
 
 MAX_WORKBOOK_BYTES = 5 * 1024 * 1024
 MAX_UNCOMPRESSED_BYTES = 50 * 1024 * 1024
@@ -175,6 +181,7 @@ def build_input_template(meta: dict) -> bytes:
     instructions["A12"] = (
         "Select the reporting year on the website; it is intentionally absent from this workbook."
     )
+    instructions["A13"] = ELECTRICITY_UNIT_NOTE
     instructions["A14"] = (
         "Academic estimate only — independently verify source values before compliance use."
     )
@@ -185,11 +192,19 @@ def build_input_template(meta: dict) -> bytes:
     instructions.merge_cells("A2:D2")
     instructions.merge_cells("A11:D11")
     instructions.merge_cells("A12:D12")
-    for cell in (instructions["A2"], instructions["A11"], instructions["A12"], instructions["A14"]):
+    instructions.merge_cells("A13:D13")
+    for cell in (
+        instructions["A2"],
+        instructions["A11"],
+        instructions["A12"],
+        instructions["A13"],
+        instructions["A14"],
+    ):
         cell.alignment = Alignment(vertical="top", wrap_text=True)
     instructions.row_dimensions[2].height = 26
     instructions.row_dimensions[11].height = 28
     instructions.row_dimensions[12].height = 30
+    instructions.row_dimensions[13].height = 30
     instructions.row_dimensions[14].height = 42
     instructions.column_dimensions["A"].width = 34
     instructions.column_dimensions["B"].width = 4
@@ -513,6 +528,7 @@ def build_report_workbook(report: dict) -> bytes:
         "source values cannot be reconstructed and are not fabricated."
     )
     methodology["A9"] = AGGREGATED_DUPLICATE_WARNING
+    methodology["A10"] = ELECTRICITY_UNIT_NOTE
     methodology["A11"] = (
         "This informal academic tool is for general information only and is not legal, tax, "
         "accounting, financial, regulatory, or CBAM compliance advice."
@@ -526,6 +542,7 @@ def build_report_workbook(report: dict) -> bytes:
         methodology.cell(row, 1).alignment = Alignment(vertical="top", wrap_text=True)
     methodology.row_dimensions[8].height = 54
     methodology.row_dimensions[9].height = 84
+    methodology.row_dimensions[10].height = 30
     methodology["A9"].fill = PatternFill("solid", fgColor=AMBER_LIGHT)
     methodology["A9"].font = Font(color=AMBER, bold=True)
     _configure_print(

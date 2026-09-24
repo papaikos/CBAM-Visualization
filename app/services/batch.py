@@ -6,7 +6,7 @@ import math
 from pathlib import Path
 from typing import Any
 
-from app.config import SUPPORTED_YEARS
+from app.config import DEFAULT_QUANTITY_UNIT, QUANTITY_UNITS, SUPPORTED_YEARS
 from app.db import connection, ensure_emissions_table
 from app.errors import BadRequest, UnsupportedYear
 
@@ -137,6 +137,7 @@ def _result_rows(
                 "sourceProductionRoute": route,
                 "productionRouteLabel": route if route else "Unspecified",
                 "weightTonnes": weight,
+                "quantityUnit": QUANTITY_UNITS.get(stored["cn_code"], DEFAULT_QUANTITY_UNIT),
                 "emissionsPerTonne": emissions,
                 "totalEmissions": emissions * weight if weight != 1.0 else None,
                 "co2Price": price,

@@ -7,7 +7,12 @@ Display-value rule (shared by the map and the detail card):
 * a country with several specified routes uses their average.
 
 Some territories are special-cased in :mod:`app.config`: micro-states are
-shown as zero, and a few territories mirror the values of another country.
+shown as zero, and a few territories mirror the values of another country
+(except where ``UNMIRRORED_COUNTRIES_BY_CODE`` keeps a territory's own records,
+e.g. Kosovo for electricity).
+
+Values are per tonne of goods, except for CN codes listed in
+``QUANTITY_UNITS`` (electricity is per MWh); responses carry the ``unit``.
 """
 
 from __future__ import annotations
@@ -16,9 +21,12 @@ import sqlite3
 
 from app.config import (
     DEFAULT_CN_CODE,
+    DEFAULT_QUANTITY_UNIT,
     MIRRORED_COUNTRIES,
+    QUANTITY_UNITS,
     SILENT_MIRRORED_COUNTRIES,
     SUPPORTED_YEARS,
+    UNMIRRORED_COUNTRIES_BY_CODE,
     ZERO_EMISSION_COUNTRIES,
 )
 from app.db import connection
@@ -34,6 +42,16 @@ _COUNTRY_ROWS_SQL = """
 
 def route_label(route: str) -> str:
     return route if route else "Unspecified"
+
+
+def quantity_unit(cn_code: str) -> str:
+    return QUANTITY_UNITS.get(cn_code, DEFAULT_QUANTITY_UNIT)
+
+
+def _mirror_source(cn_code: str, country: str) -> str | None:
+    if country in UNMIRRORED_COUNTRIES_BY_CODE.get(cn_code, ()):
+        return None
+    return MIRRORED_COUNTRIES.get(country)
 
 
 def _require_supported_year(year: int) -> None:
@@ -88,6 +106,7 @@ def _zero_emission_detail(cn_code: str, year: int, country: str) -> dict:
     return {
         "cnCode": cn_code,
         "year": year,
+        "unit": quantity_unit(cn_code),
         "country": country,
         "mirroredFrom": None,
         "displayValue": display["paidEmissions"],
@@ -139,6 +158,8 @@ def get_meta() -> dict:
         "routeCatalog": route_catalog,
         "defaultCode": DEFAULT_CN_CODE if DEFAULT_CN_CODE in codes else (codes[0] if codes else None),
         "defaultYear": SUPPORTED_YEARS[0],
+        "defaultUnit": DEFAULT_QUANTITY_UNIT,
+        "units": {code: unit for code, unit in QUANTITY_UNITS.items() if code in codes},
     }
 
 
@@ -171,8 +192,9 @@ def get_map_data(cn_code: str, year: int) -> dict:
         rows_by_country[zero_country] = []
         entries[zero_country] = _map_entry(zero_country, _zero_emission_display())
 
-    for mirrored_country, source_country in MIRRORED_COUNTRIES.items():
-        source_rows = rows_by_country.get(source_country)
+    for mirrored_country in MIRRORED_COUNTRIES:
+        source_country = _mirror_source(cn_code, mirrored_country)
+        source_rows = rows_by_country.get(source_country) if source_country else None
         if not source_rows:
             continue
         rows_by_country[mirrored_country] = source_rows
@@ -196,6 +218,7 @@ def get_map_data(cn_code: str, year: int) -> dict:
     return {
         "cnCode": cn_code,
         "year": year,
+        "unit": quantity_unit(cn_code),
         "displayRuleSummary": "Each country uses its own value",
         "displayRuleDescription": (
             "If a country has an unspecified production route, that value is used. "
@@ -228,6 +251,7 @@ def get_country_detail(cn_code: str, year: int, country: str) -> dict:
     return {
         "cnCode": cn_code,
         "year": year,
+        "unit": quantity_unit(cn_code),
         "country": country,
         "mirroredFrom": mirrored_from,
         "displayValue": display["paidEmissions"],
@@ -253,7 +277,7 @@ def _country_rows(
     conn: sqlite3.Connection, cn_code: str, year: int, country: str
 ) -> tuple[list[sqlite3.Row], str | None]:
     """Return the stored rows for a country plus its disclosed mirror source."""
-    source_country = MIRRORED_COUNTRIES.get(country, country)
+    source_country = _mirror_source(cn_code, country) or country
     rows = conn.execute(_COUNTRY_ROWS_SQL, (cn_code, year, source_country)).fetchall()
     if not rows:
         return [], None

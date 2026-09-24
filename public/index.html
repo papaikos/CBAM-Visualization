@@ -5,6 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Global Trade Insights</title>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="preload" href="/countries.topojson" as="fetch" crossorigin="anonymous" />
+    <link rel="preconnect" href="https://unpkg.com" crossorigin="" />
+    <link rel="preconnect" href="https://a.basemaps.cartocdn.com" />
     <link
       rel="stylesheet"
       href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
@@ -129,7 +132,7 @@
         <section id="country-detail-card" class="floating-card detail-card hidden"></section>
 
         <section class="floating-card legend-card">
-          <p class="eyebrow">Map value</p>
+          <p class="eyebrow">Map value · <span id="legend-unit">tCO2/ton</span></p>
           <div class="legend-row">
             <span id="legend-min" class="legend-edge">0</span>
             <div id="legend-gradient" class="legend-gradient"></div>
@@ -149,6 +152,7 @@
       integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
       crossorigin=""
     ></script>
+    <script src="/vendor/topojson-client.min.js"></script>
     <script type="module" src="/js/map/main.js"></script>
   </body>
 </html>

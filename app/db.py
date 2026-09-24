@@ -19,6 +19,17 @@ def database_exists(db_path: Path | str | None = None) -> bool:
     return _resolve(db_path).exists()
 
 
+def fingerprint(db_path: Path | str | None = None) -> tuple[str, int, int]:
+    """Identify the database file's current contents for response caching.
+
+    The bundled database is read-only at runtime, so cached query results stay
+    valid until the file is replaced (which changes its mtime or size).
+    """
+    path = _resolve(db_path).resolve()
+    stat = path.stat()
+    return (str(path), stat.st_mtime_ns, stat.st_size)
+
+
 def open_readonly(db_path: Path | str | None = None) -> sqlite3.Connection:
     """Open the emissions database in read-only mode.
 

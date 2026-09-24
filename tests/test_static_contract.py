@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gzip
 import hashlib
 import json
 import sqlite3
@@ -23,11 +24,14 @@ class StaticContractTests(unittest.TestCase):
         self.assertEqual(digest.hexdigest(), expected)
 
     def test_map_emissions_records_are_unchanged(self) -> None:
+        # Electricity (CN 27160000) is generated from data/electricity_27160000.json and
+        # checked separately; every other stored record must stay byte-identical.
         connection = sqlite3.connect(ROOT / "data/cbam.sqlite3")
         rows = connection.execute(
             """
             SELECT cn_code, country, year, production_route, paid_emissions, duplicate_count
             FROM emissions
+            WHERE cn_code <> '27160000'
             ORDER BY cn_code, country, year, production_route
             """
         ).fetchall()
@@ -71,6 +75,34 @@ class StaticContractTests(unittest.TestCase):
         width, height = struct.unpack(">II", png_header[16:24])
         self.assertEqual(width, height)
         self.assertGreaterEqual(width, 512)
+
+    def test_shared_brand_artwork_stays_lightweight(self) -> None:
+        # Shown at 3rem; a multi-megabyte file only slows the first page load.
+        self.assertLess((ROOT / "public/cbam-brand.png").stat().st_size, 256 * 1024)
+
+    def test_map_geometry_is_compact_topojson_with_a_matching_gzip_copy(self) -> None:
+        raw = (ROOT / "public/countries.topojson").read_bytes()
+        self.assertLess(len(raw), 4 * 1024 * 1024)
+        self.assertEqual(gzip.decompress((ROOT / "public/countries.topojson.gz").read_bytes()), raw)
+        self.assertFalse((ROOT / "public/countries.geojson").exists())
+
+        topology = json.loads(raw)
+        self.assertEqual(topology["type"], "Topology")
+        names = {
+            geometry["properties"]["name"]
+            for geometry in topology["objects"]["countries"]["geometries"]
+        }
+        self.assertEqual(len(names), 258)
+        self.assertTrue({"Kosovo", "Republic of Serbia", "Turkey", "Northern Cyprus"} <= names)
+
+    def test_map_page_loads_topojson_geometry(self) -> None:
+        html = (ROOT / "public/index.html").read_text(encoding="utf-8")
+        self.assertIn('src="/vendor/topojson-client.min.js"', html)
+        self.assertLess(
+            html.index("/vendor/topojson-client.min.js"), html.index("/js/map/main.js")
+        )
+        self.assertIn('href="/countries.topojson" as="fetch"', html)
+        self.assertIn('id="legend-unit"', html)
 
     def test_desktop_headers_share_right_aligned_mode_toggle_geometry(self) -> None:
         map_css = (ROOT / "public/styles.css").read_text(encoding="utf-8")
