@@ -4,6 +4,8 @@ import importlib.util
 import json
 import os
 import sqlite3
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -145,6 +147,20 @@ class ElectricityMapTests(unittest.TestCase):
         self.assertAlmostEqual(electricity["totalEmissions"], 10.41)
         self.assertAlmostEqual(electricity["totalCbamCost"], 780.75)
         self.assertEqual(aluminium["quantityUnit"], "ton")
+
+
+class StartupTests(unittest.TestCase):
+    def test_excel_library_is_not_loaded_at_startup(self) -> None:
+        # openpyxl is only needed by the Excel routes; keeping it out of startup
+        # shortens cold starts on a sleeping free-tier instance.
+        result = subprocess.run(
+            [sys.executable, "-c", "import sys, app.main; print('openpyxl' in sys.modules)"],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        self.assertEqual(result.stdout.strip(), "False")
 
 
 class ElectricityImportTests(unittest.TestCase):

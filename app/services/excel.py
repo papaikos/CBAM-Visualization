@@ -16,7 +16,7 @@ from openpyxl.workbook.defined_name import DefinedName
 from openpyxl.worksheet.datavalidation import DataValidation
 from openpyxl.worksheet.properties import PageSetupProperties
 
-from app.config import ELECTRICITY_CN_CODE
+from app.config import ELECTRICITY_CN_CODE, MAX_WORKBOOK_BYTES
 from app.errors import WorkbookFormatError, WorkbookTooLarge
 from app.services.batch import AGGREGATED_DUPLICATE_WARNING
 
@@ -26,7 +26,6 @@ ELECTRICITY_UNIT_NOTE = (
     "column; its emission and cost values are per MWh instead of per tonne."
 )
 
-MAX_WORKBOOK_BYTES = 5 * 1024 * 1024
 MAX_UNCOMPRESSED_BYTES = 50 * 1024 * 1024
 
 NAVY = "0F172A"

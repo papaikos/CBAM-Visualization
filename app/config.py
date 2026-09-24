@@ -42,4 +42,5 @@ UNMIRRORED_COUNTRIES_BY_CODE: dict[str, frozenset[str]] = {
 }
 
 MAX_JSON_BYTES = 10 * 1024 * 1024
+MAX_WORKBOOK_BYTES = 5 * 1024 * 1024
 XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"

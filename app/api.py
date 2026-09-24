@@ -30,12 +30,9 @@ from app.errors import (
     WorkbookTooLarge,
 )
 from app.services import batch, emissions
-from app.services.excel import (
-    MAX_WORKBOOK_BYTES,
-    build_input_template,
-    build_report_workbook,
-    parse_input_workbook,
-)
+
+# app.services.excel (openpyxl) is imported inside the Excel routes: it is a large
+# share of startup time and only those routes need it, so cold starts stay fast.
 
 router = APIRouter(prefix="/api")
 
@@ -94,7 +91,7 @@ async def _read_body(request: Request, maximum_bytes: int) -> bytes:
     if length < 0:
         raise BadRequest("Content-Length must be a non-negative integer.")
     if length > maximum_bytes:
-        if maximum_bytes == MAX_WORKBOOK_BYTES:
+        if maximum_bytes == config.MAX_WORKBOOK_BYTES:
             raise WorkbookTooLarge("Request body exceeds the allowed size.")
         raise PayloadTooLarge("Request body exceeds the allowed size.")
     return await request.body()
@@ -114,6 +111,12 @@ async def _read_json_payload(request: Request) -> dict:
         raise InvalidJson("The request body is not valid JSON.") from exc
 
 
+def _excel():
+    from app.services import excel
+
+    return excel
+
+
 def _encode_json(payload: Any) -> bytes:
     return json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
 
@@ -124,7 +127,7 @@ _CACHEABLE_QUERIES: dict[str, Callable[..., Any]] = {
     "map-data": lambda cn_code, year: emissions.get_map_data(cn_code, year),
     "country": lambda cn_code, year, country: emissions.get_country_detail(cn_code, year, country),
     "batch-meta": lambda: batch.get_batch_meta(),
-    "batch-template": lambda: build_input_template(batch.get_batch_meta()),
+    "batch-template": lambda: _excel().build_input_template(batch.get_batch_meta()),
 }
 
 
@@ -210,8 +213,8 @@ async def batch_import(request: Request) -> dict:
         raise WorkbookFormatError(
             "Upload a standard .xlsx workbook.", code="unsupported_workbook_type"
         )
-    body = await _read_body(request, MAX_WORKBOOK_BYTES)
-    return parse_input_workbook(body)
+    body = await _read_body(request, config.MAX_WORKBOOK_BYTES)
+    return _excel().parse_input_workbook(body)
 
 
 @router.post("/batch-report")
@@ -224,7 +227,7 @@ async def batch_report(request: Request) -> dict:
 async def batch_export(request: Request) -> Response:
     payload = await _read_json_payload(request)
     report = batch.build_batch_report(payload)
-    workbook = build_report_workbook(report)
+    workbook = _excel().build_report_workbook(report)
     return _xlsx_response(workbook, f"CBAM_Batch_Report_{report['year']}.xlsx")
 
 

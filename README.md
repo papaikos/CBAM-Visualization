@@ -265,6 +265,7 @@ Because `data/cbam.sqlite3` is committed, Render does not need the original CSV 
 The server is tuned for the free tier's small CPU and bandwidth:
 
 - read-only API results are cached in memory per database file, so repeated map, country, and batch-meta requests skip SQLite and JSON encoding;
+- openpyxl (Excel) loads only when an Excel route is first used, which shortens cold starts;
 - the country geometry is served from a pre-compressed `.gz` copy (no per-request compression work), and other text responses over 1 KiB are gzipped;
 - static files are revalidated with ETags (`Cache-Control: no-cache`), so returning visitors get `304 Not Modified` instead of re-downloading; API responses stay `no-store`.
 
