@@ -3,10 +3,11 @@
 The source is the Natural Earth 1:10m admin-0 countries GeoJSON in
 ``data/source/countries.geojson`` (14.6 MB). It is converted to TopoJSON with
 mapshaper: borders shared by two countries are stored once, and a
-topology-preserving Douglas-Peucker pass removes vertices closer than 400 m to
-the line. At the app's maximum zoom (6) one pixel is at least ~0.8 km even near
-the poles, so the removed detail is below what Leaflet can draw (it already
-drops sub-pixel detail itself), and neighbouring countries never gap or overlap.
+topology-preserving Douglas-Peucker pass removes vertices closer than 4 km to
+the line (about one to two pixels at the app's maximum zoom, 6), and
+neighbouring countries never gap or overlap. Leaflet re-projects and redraws
+every border point after each zoom step, so fewer points means faster zooming;
+this level keeps every island while cutting the points by about 80%.
 
 A gzip copy is written next to the TopoJSON so the server can send it
 pre-compressed without spending CPU per request.
@@ -28,8 +29,8 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "data" / "source" / "countries.geojson"
 TARGET = ROOT / "public" / "countries.topojson"
 MAPSHAPER = "mapshaper@0.6.113"
-SIMPLIFY_INTERVAL_METERS = 400
-QUANTIZATION = 1_000_000
+SIMPLIFY_INTERVAL_METERS = 4000
+QUANTIZATION = 100_000
 
 
 def write_gzip_copy(path: Path) -> Path:

@@ -137,7 +137,7 @@ function syncMapViewport() {
 }
 
 function initializeMap() {
-  state.countryRenderer = L.svg({ padding: 1.6 });
+  state.countryRenderer = L.svg({ padding: 0.5 });
 
   state.map = L.map("map", {
     center: [20, 0],

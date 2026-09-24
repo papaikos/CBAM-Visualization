@@ -175,7 +175,7 @@ The map draws `public/countries.topojson`, built from the Natural Earth 1:10m bo
 python scripts/build_map_assets.py   # needs Node.js; runs mapshaper via npx
 ```
 
-Shared borders are stored once and a topology-preserving simplification removes vertices closer than 400 m to the line. At the map's maximum zoom (6) that is below one screen pixel, so the rendered map is visually the same as the full-resolution file (in side-by-side renders less than 0.2% of pixels differ, all on anti-aliased edges) while the download drops from 14.6 MB to 0.9 MB gzipped.
+Shared borders are stored once and a topology-preserving simplification removes vertices closer than 4 km to the line, about one to two screen pixels at the map's maximum zoom (6). Leaflet re-projects and redraws every border point after each zoom step, so this keeps zooming quick; every island is kept, and the download drops from 14.6 MB to about 0.2 MB gzipped. Lower `SIMPLIFY_INTERVAL_METERS` in the script for more detail at the cost of slower zooming.
 
 ## Technology
 
