@@ -177,8 +177,6 @@ python scripts/build_map_assets.py   # needs Node.js; runs mapshaper via npx
 
 Shared borders are stored once and a topology-preserving simplification removes vertices closer than 400 m to the line. At the map's maximum zoom (6) that is below one screen pixel, so the rendered map is visually the same as the full-resolution file (in side-by-side renders less than 0.2% of pixels differ, all on anti-aliased edges) while the download drops from 14.6 MB to 0.9 MB gzipped.
 
-The borders are drawn once, as SVG paths in Web Mercator pixel space (`public/js/map/country-layer.js`), and zooming only resizes that SVG. Leaflet's own vector layers re-project and rebuild every path after each zoom step, which froze the page for a moment on every step (longest when zooming out); this way the browser just redraws the same shapes at the new size.
-
 ## Technology
 
 - Frontend: HTML, CSS, JavaScript (native ES modules, no build step)
