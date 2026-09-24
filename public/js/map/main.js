@@ -150,12 +150,11 @@ function initializeMap() {
     maxBoundsViscosity: 1,
   });
 
-  L.tileLayer("https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png?key=cb1_3061_1_ce706d68d7c37fb4e7727576", {
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a> | By Athanasios Papazikos',
-    bounds: WORLD_BOUNDS,
-    keepBuffer: 8,
-    noWrap: true,
-  }).addTo(state.map);
+  // No basemap tiles: the countries cover the land and the map background is the sea,
+  // so zooming needs no tile downloads and no third-party tile service (or key).
+  state.map.attributionControl.addAttribution(
+    'Borders: <a href="https://www.naturalearthdata.com/">Natural Earth</a> | By Athanasios Papazikos',
+  );
 
   state.map.on("click", () => {
     if (Date.now() < state.suppressMapClickUntil) {

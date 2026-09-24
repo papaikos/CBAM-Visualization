@@ -180,7 +180,7 @@ Shared borders are stored once and a topology-preserving simplification removes 
 ## Technology
 
 - Frontend: HTML, CSS, JavaScript (native ES modules, no build step)
-- Map: Leaflet
+- Map: Leaflet, drawing Natural Earth borders on a plain sea background (no basemap tiles, so no tile service or API key)
 - Backend: FastAPI served by uvicorn
 - Database: SQLite (opened read-only)
 - Deployment: Render web service
