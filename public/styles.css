@@ -891,6 +891,15 @@ input {
   transition: none;
 }
 
+/* Only the country shapes take pointer events; clicks on the sea reach the map. */
+.country-layer {
+  pointer-events: none;
+}
+
+.country-layer .country-path {
+  pointer-events: visiblePainted;
+}
+
 @media (max-width: 600px) {
   .disclaimer-dialog {
     width: calc(100vw - 1rem);

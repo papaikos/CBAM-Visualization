@@ -8,6 +8,7 @@ import {
   getDataLookupCanonical,
 } from "./country-names.js";
 import { initCnCodePicker } from "./cn-code-picker.js";
+import { createCountryLayer, setPathStyle } from "./country-layer.js";
 import { formatRouteLabel, getRouteExplanation } from "./routes.js";
 import { initToolbarInteractions } from "./toolbar.js";
 
@@ -23,9 +24,8 @@ const state = {
   meta: null,
   map: null,
   geojson: null,
-  geojsonLayer: null,
-  countryRenderer: null,
-  hoveredLayer: null,
+  countryLayer: null,
+  hoveredFeature: null,
   selectedCode: "",
   selectedYear: 2026,
   co2Price: "",
@@ -137,8 +137,6 @@ function syncMapViewport() {
 }
 
 function initializeMap() {
-  state.countryRenderer = L.svg({ padding: 1.6 });
-
   state.map = L.map("map", {
     center: [20, 0],
     zoom: getResponsiveMinZoom(),
@@ -187,7 +185,7 @@ function getFeatureLookupKey(feature) {
 function getFeatureStyle(feature) {
   const entry = state.mapData?.mapValuesByCanonical?.[getFeatureLookupKey(feature)];
   const color = valueColor(entry?.paidEmissions ?? null);
-  const isHovered = state.hoveredLayer?.feature === feature;
+  const isHovered = state.hoveredFeature === feature;
 
   return {
     className: "country-path",
@@ -199,71 +197,65 @@ function getFeatureStyle(feature) {
   };
 }
 
-function applyLayerStyle(layer) {
-  if (!layer) {
-    return;
+function applyFeatureStyle(feature) {
+  const path = feature && state.countryLayer?.pathFor(feature);
+  if (path) {
+    setPathStyle(path, getFeatureStyle(feature));
   }
-  layer.setStyle(getFeatureStyle(layer.feature));
 }
 
 function refreshLayerStyles() {
-  state.geojsonLayer?.eachLayer((layer) => {
-    layer.setStyle(getFeatureStyle(layer.feature));
-  });
-}
-
-function stopMapClick(event) {
-  state.suppressMapClickUntil = Date.now() + 350;
-  if (event.originalEvent) {
-    L.DomEvent.stop(event.originalEvent);
+  for (const feature of state.countryLayer?.features() ?? []) {
+    applyFeatureStyle(feature);
   }
 }
 
-function buildGeoJsonLayer() {
-  state.geojsonLayer = L.geoJSON(state.geojson, {
-    bubblingMouseEvents: false,
-    interactive: true,
-    renderer: state.countryRenderer,
-    smoothFactor: 0.8,
-    style: (feature) => getFeatureStyle(feature),
-    onEachFeature: (feature, layer) => {
-      layer.on({
-        mouseover: (event) => {
-          const previousLayer = state.hoveredLayer;
-          state.hoveredCountry = getFeatureName(event.target.feature);
-          state.hoveredLayer = event.target;
-          if (previousLayer && previousLayer !== event.target) {
-            applyLayerStyle(previousLayer);
-          }
-          state.mouse = {
-            x: event.originalEvent.clientX,
-            y: event.originalEvent.clientY,
-          };
-          renderTooltip();
-          applyLayerStyle(event.target);
-        },
-        mouseout: (event) => {
-          state.hoveredCountry = null;
-          if (state.hoveredLayer === event.target) {
-            state.hoveredLayer = null;
-          }
-          renderTooltip();
-          applyLayerStyle(event.target);
-        },
-        mousemove: (event) => {
-          state.mouse = {
-            x: event.originalEvent.clientX,
-            y: event.originalEvent.clientY,
-          };
-          queueTooltipMove();
-        },
-        click: async (event) => {
-          stopMapClick(event);
-          await selectCountry(getFeatureName(event.target.feature));
-        },
-      });
-    },
-  }).addTo(state.map);
+function setHoveredFeature(feature, event) {
+  if (state.hoveredFeature === feature) {
+    return;
+  }
+  const previous = state.hoveredFeature;
+  state.hoveredFeature = feature;
+  state.hoveredCountry = feature ? getFeatureName(feature) : null;
+  applyFeatureStyle(previous);
+  applyFeatureStyle(feature);
+  if (event) {
+    state.mouse = { x: event.clientX, y: event.clientY };
+  }
+  renderTooltip();
+}
+
+function buildCountryLayer() {
+  state.countryLayer = createCountryLayer(state.geojson.features);
+  const { svg, featureFor } = state.countryLayer;
+
+  svg.addEventListener("mouseover", (event) => {
+    const feature = featureFor(event.target);
+    if (feature) {
+      setHoveredFeature(feature, event);
+    }
+  });
+  svg.addEventListener("mouseout", (event) => {
+    if (featureFor(event.target) && !featureFor(event.relatedTarget)) {
+      setHoveredFeature(null, event);
+    }
+  });
+  svg.addEventListener("mousemove", (event) => {
+    state.mouse = { x: event.clientX, y: event.clientY };
+    queueTooltipMove();
+  });
+  svg.addEventListener("click", (event) => {
+    const feature = featureFor(event.target);
+    if (!feature || state.map.dragging?.moved()) {
+      return;
+    }
+    state.suppressMapClickUntil = Date.now() + 350;
+    L.DomEvent.stop(event);
+    selectCountry(getFeatureName(feature));
+  });
+
+  refreshLayerStyles();
+  state.countryLayer.layer.addTo(state.map);
 }
 
 /* ---------- data refresh ---------- */
@@ -292,7 +284,7 @@ async function refreshMapData() {
   state.selectedCountry = null;
   state.countryDetail = null;
   state.hoveredCountry = null;
-  state.hoveredLayer = null;
+  state.hoveredFeature = null;
 
   updateLegend();
   renderCountrySearchResults();
@@ -709,7 +701,7 @@ async function init() {
   elements.cnCodeInput.value = state.selectedCode;
 
   renderCodeOptions(meta.codes);
-  buildGeoJsonLayer();
+  buildCountryLayer();
   await refreshMapData();
 }
 
